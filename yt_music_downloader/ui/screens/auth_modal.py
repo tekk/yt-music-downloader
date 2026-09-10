@@ -1,4 +1,4 @@
-"""Authentication and cookie management modal screen."""
+"""Authentication and cookie management modal screen with tabbed interface."""
 
 from __future__ import annotations
 
@@ -9,9 +9,17 @@ from typing import Optional
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, RichLog, Select
+from textual.widgets import (
+    Button,
+    Input,
+    Label,
+    RichLog,
+    Select,
+    TabbedContent,
+    TabPane,
+)
 
 from ...browser_auth import (
     BrowserLoginSession,
@@ -23,7 +31,7 @@ from ...config import AppConfig
 
 
 class AuthModal(ModalScreen[Optional[AppConfig]]):
-    """Modal dialog for logging into YouTube Music and grabbing cookies."""
+    """Modal dialog with tabbed options for logging in and managing cookies."""
 
     DEFAULT_CSS = """
     AuthModal {
@@ -31,31 +39,100 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
         background: rgba(0, 0, 0, 0.7);
     }
     #auth-dialog {
-        width: 80;
-        height: auto;
-        max-height: 90%;
+        width: 86;
+        height: 32;
         background: $surface;
         border: thick $primary;
         padding: 1 2;
+        layout: vertical;
     }
-    #auth-status-box {
-        margin: 1 0;
-        padding: 0 1;
-        height: 3;
-        background: $surface-lighten-1;
+    #auth-header {
+        height: 2;
         layout: horizontal;
         align: left middle;
+        border-bottom: solid $surface-lighten-1;
+        margin-bottom: 1;
+    }
+    #auth-title {
+        text-style: bold;
+        color: $primary;
+        width: 1fr;
+    }
+    #auth-current-badge {
+        height: 1;
+        padding: 0 1;
+        text-style: bold;
+    }
+    #auth-tabs {
+        height: 1fr;
+    }
+    TabPane {
+        padding: 1 1 0 1;
+        layout: vertical;
+    }
+    .tab-instruction {
+        color: $text;
+        margin-bottom: 1;
+    }
+    .tab-help {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    .auth-btn-row {
+        height: 3;
+        layout: horizontal;
+        align: left middle;
+        margin-bottom: 1;
+    }
+    .auth-btn-row Button {
+        margin-right: 1;
     }
     #auth-log {
-        height: 7;
-        margin: 1 0;
+        height: 9;
+        margin-top: 1;
         border: solid $surface-lighten-1;
         background: $surface-darken-1;
     }
-    .auth-section {
+    .sync-row {
+        height: 3;
+        layout: horizontal;
+        align: left middle;
+        margin-bottom: 1;
+    }
+    #select-browser {
+        width: 30;
+        margin-right: 1;
+    }
+    #feedback-sync, #feedback-import {
+        height: 2;
         margin-top: 1;
-        padding-top: 1;
+        text-style: bold;
+    }
+    .info-row {
+        height: 2;
+        layout: horizontal;
+        align: left middle;
+        margin-bottom: 1;
+    }
+    .info-label {
+        width: 22;
+        text-style: bold;
+        color: $text-muted;
+    }
+    .info-value {
+        width: 1fr;
+        color: $text;
+    }
+    #auth-footer {
+        height: 3;
+        dock: bottom;
+        layout: horizontal;
+        align: right middle;
         border-top: solid $surface-lighten-1;
+        padding-top: 1;
+    }
+    #btn-close {
+        min-width: 16;
     }
     """
 
@@ -66,79 +143,126 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="auth-dialog"):
-            yield Label("🔐 YouTube Music Authentication", id="modal-title", classes="modal-title")
+            # Header
+            with Horizontal(id="auth-header"):
+                yield Label("🔐 YouTube Music Authentication", id="auth-title")
+                yield Label("", id="auth-current-badge")
 
-            # Status Banner
-            with Horizontal(id="auth-status-box"):
-                yield Label("Current Status: ", classes="option-label")
-                yield Label("", id="status-display")
+            # Tabbed content for clean separation
+            with TabbedContent(id="auth-tabs"):
+                # TAB 1: Browser Login (Automated)
+                with TabPane("🚀 Browser Login", id="tab-browser"):
+                    yield Label(
+                        "Open YouTube Music in an isolated browser to sign in. Cookies will be grabbed automatically.",
+                        classes="tab-instruction",
+                    )
+                    with Horizontal(classes="auth-btn-row"):
+                        yield Button("🚀 Launch Browser & Login", id="btn-browser-login", variant="primary")
+                        yield Button("🛑 Stop Login", id="btn-stop-login", variant="error", disabled=True)
 
-            with ScrollableContainer():
-                # Method 1: Browser Login
-                yield Label("Method 1: Interactive Browser Login (Recommended)", classes="modal-section-title")
-                yield Label(
-                    "Launches browser with an isolated profile. Sign in with your Google account, and cookies will be grabbed automatically.",
-                    classes="modal-desc",
-                )
-                with Horizontal():
-                    yield Button("🚀 Open Browser & Login", id="btn-browser-login", variant="primary")
-                    yield Button("🛑 Stop Login", id="btn-stop-login", variant="error", disabled=True)
+                    yield RichLog(id="auth-log", highlight=True, markup=True)
 
-                # Activity Log
-                yield RichLog(id="auth-log", highlight=True, markup=True)
+                # TAB 2: 1-Click Sync from Installed Browser
+                with TabPane("📥 1-Click Sync", id="tab-sync"):
+                    yield Label(
+                        "Import active cookies directly from your default installed browser (no new login required):",
+                        classes="tab-instruction",
+                    )
+                    with Horizontal(classes="sync-row"):
+                        browser_options = [
+                            ("Google Chrome", "chrome"),
+                            ("Mozilla Firefox", "firefox"),
+                            ("Microsoft Edge", "edge"),
+                            ("Brave Browser", "brave"),
+                            ("Opera", "opera"),
+                            ("Chromium", "chromium"),
+                        ]
+                        yield Select(browser_options, value="chrome", id="select-browser")
+                        yield Button("📥 Sync from Browser", id="btn-sync-browser", variant="primary")
 
-                # Method 2: Direct Browser Extraction
-                yield Label("Method 2: 1-Click Sync from Installed Browser", classes="modal-section-title")
-                yield Label(
-                    "Directly imports active cookies from your default installed browser.",
-                    classes="modal-desc",
-                )
-                with Horizontal():
-                    browser_options = [
-                        ("Google Chrome", "chrome"),
-                        ("Mozilla Firefox", "firefox"),
-                        ("Microsoft Edge", "edge"),
-                        ("Brave Browser", "brave"),
-                        ("Opera", "opera"),
-                        ("Chromium", "chromium"),
-                    ]
-                    yield Select(browser_options, value="chrome", id="select-browser")
-                    yield Button("📥 Sync from Browser", id="btn-sync-browser")
+                    yield Label("Click 'Sync from Browser' to extract session cookies.", id="feedback-sync")
 
-                # Method 3: File Import
-                yield Label("Method 3: Import Existing cookies.txt File", classes="modal-section-title")
-                with Horizontal():
-                    yield Input(placeholder="/path/to/cookies.txt", id="input-cookie-path")
-                    yield Button("📂 Load File", id="btn-load-file")
+                # TAB 3: Import File
+                with TabPane("📁 Import File", id="tab-import"):
+                    yield Label(
+                        "Import an existing Netscape format cookies.txt file from disk:",
+                        classes="tab-instruction",
+                    )
+                    with Horizontal(classes="sync-row"):
+                        yield Input(
+                            placeholder="Path to cookies.txt (e.g. ~/Downloads/cookies.txt)",
+                            id="input-cookie-path",
+                        )
+                        yield Button("📂 Load File", id="btn-load-file", variant="primary")
 
-            # Bottom Actions
-            with Horizontal(classes="modal-buttons"):
-                yield Button("🗑 Clear Cookies", id="btn-clear-cookies", variant="warning")
+                    yield Label("Specify a path and click 'Load File'.", id="feedback-import")
+
+                # TAB 4: Cookie Info & Reset
+                with TabPane("ℹ Cookie Status", id="tab-info"):
+                    with Horizontal(classes="info-row"):
+                        yield Label("Status:", classes="info-label")
+                        yield Label("", id="info-status", classes="info-value")
+
+                    with Horizontal(classes="info-row"):
+                        yield Label("File Location:", classes="info-label")
+                        yield Label(self.config.cookies_path, id="info-path", classes="info-value")
+
+                    with Horizontal(classes="info-row"):
+                        yield Label("Total Cookies:", classes="info-label")
+                        yield Label("0", id="info-count", classes="info-value")
+
+                    with Horizontal(classes="info-row"):
+                        yield Label("Tokens Detected:", classes="info-label")
+                        yield Label("None", id="info-tokens", classes="info-value")
+
+                    with Horizontal(classes="auth-btn-row"):
+                        yield Button("🗑 Clear / Delete Saved Cookies", id="btn-clear-cookies", variant="error")
+
+            # Footer
+            with Horizontal(id="auth-footer"):
                 yield Button("Done / Close", id="btn-close", variant="default")
 
     def on_mount(self) -> None:
         self.refresh_status()
+        self.log_message("[dim]Ready. Click 'Launch Browser & Login' to begin authentication.[/dim]")
 
     def refresh_status(self) -> None:
         status = check_cookie_file(self.config.cookies_path)
-        status_label = self.query_one("#status-display", Label)
+
+        # Header Badge
+        badge = self.query_one("#auth-current-badge", Label)
         if status.is_authenticated:
-            cookies_str = ", ".join(status.auth_cookies[:3])
-            status_label.update(
-                Text.from_markup(f"[bold green]✓ Authenticated[/bold green] ({status.count} cookies, tokens: {cookies_str})")
-            )
+            badge.update(Text.from_markup(f"[bold green]✓ Authenticated ({status.count} cookies)[/bold green]"))
         elif status.exists:
-            status_label.update(
-                Text.from_markup(f"[yellow]⚠ Cookies file present ({status.count} cookies, unauthenticated)[/yellow]")
-            )
+            badge.update(Text.from_markup(f"[yellow]⚠ Cookies found ({status.count}, guest)[/yellow]"))
         else:
-            status_label.update(
-                Text.from_markup("[dim red]✗ Not Logged In (Guest Mode)[/dim red]")
-            )
+            badge.update(Text.from_markup("[dim red]✗ Not Logged In[/dim red]"))
+
+        # Info Tab Labels
+        info_status = self.query_one("#info-status", Label)
+        info_count = self.query_one("#info-count", Label)
+        info_tokens = self.query_one("#info-tokens", Label)
+        info_path = self.query_one("#info-path", Label)
+
+        info_path.update(self.config.cookies_path)
+        info_count.update(str(status.count))
+
+        if status.is_authenticated:
+            info_status.update(Text.from_markup("[bold green]✓ Authenticated (Premium / Account active)[/bold green]"))
+            info_tokens.update(Text.from_markup(f"[cyan]{', '.join(status.auth_cookies)}[/cyan]"))
+        elif status.exists:
+            info_status.update(Text.from_markup("[yellow]Cookies present without login tokens[/yellow]"))
+            info_tokens.update("None")
+        else:
+            info_status.update(Text.from_markup("[dim red]No cookies saved[/dim red]"))
+            info_tokens.update("None")
 
     def log_message(self, msg: str) -> None:
-        log = self.query_one("#auth-log", RichLog)
-        log.write(msg)
+        try:
+            log = self.query_one("#auth-log", RichLog)
+            log.write(msg)
+        except Exception:
+            pass
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
@@ -160,11 +284,11 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
 
     @work(exclusive=True)
     async def start_browser_login(self) -> None:
-        """Background worker running the browser login session."""
+        """Background worker running browser login."""
         self.query_one("#btn-browser-login", Button).disabled = True
         self.query_one("#btn-stop-login", Button).disabled = False
 
-        self.log_message("[bold cyan]Initializing browser session...[/bold cyan]")
+        self.log_message("[bold cyan]▶ Starting browser session...[/bold cyan]")
         session = BrowserLoginSession(
             target_cookie_path=self.config.cookies_path,
             on_status=self.log_message,
@@ -183,7 +307,7 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
             self.config.save()
             self.refresh_status()
         else:
-            self.log_message("[yellow]Browser session finished or cancelled.[/yellow]")
+            self.log_message("[yellow]Browser session finished or stopped.[/yellow]")
 
         self.query_one("#btn-browser-login", Button).disabled = False
         self.query_one("#btn-stop-login", Button).disabled = True
@@ -199,11 +323,12 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
     async def sync_from_browser(self) -> None:
         """Sync cookies directly from an installed browser."""
         select = self.query_one("#select-browser", Select)
+        feedback = self.query_one("#feedback-sync", Label)
         browser = select.value
         if not browser:
             return
 
-        self.log_message(f"Attempting to extract cookies from [bold]{browser}[/bold]...")
+        feedback.update(Text.from_markup(f"[cyan]Extracting cookies from [bold]{browser}[/bold]...[/cyan]"))
         try:
             loop = asyncio.get_running_loop()
             status = await loop.run_in_executor(
@@ -213,42 +338,48 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
                 self.config.cookies_path,
             )
             if status.is_authenticated:
-                self.log_message(
-                    f"[bold green]✓ Successfully synced {status.count} cookies from {browser}![/bold green]"
+                feedback.update(
+                    Text.from_markup(
+                        f"[bold green]✓ Successfully synced {status.count} cookies from {browser}![/bold green]"
+                    )
                 )
             elif status.exists:
-                self.log_message(
-                    f"[yellow]Extracted {status.count} cookies from {browser}, but no YouTube login was found.[/yellow]"
+                feedback.update(
+                    Text.from_markup(
+                        f"[yellow]Synced {status.count} cookies, but no active YouTube login found in {browser}.[/yellow]"
+                    )
                 )
             else:
-                self.log_message(f"[red]No cookies found in {browser}.[/red]")
+                feedback.update(Text.from_markup(f"[red]No cookies found in {browser}.[/red]"))
+
             self.config.save()
             self.refresh_status()
         except Exception as e:
-            self.log_message(f"[bold red]Extraction failed:[/bold red] {e}")
+            feedback.update(Text.from_markup(f"[bold red]Extraction failed:[/bold red] {e}"))
 
     def load_cookie_file(self) -> None:
         """Import custom cookies.txt file."""
         input_widget = self.query_one("#input-cookie-path", Input)
+        feedback = self.query_one("#feedback-import", Label)
         path_str = input_widget.value.strip()
         if not path_str:
-            self.log_message("[red]Please specify a valid file path.[/red]")
+            feedback.update(Text.from_markup("[red]Please specify a file path.[/red]"))
             return
 
         p = Path(path_str).expanduser().resolve()
         if not p.is_file():
-            self.log_message(f"[red]File does not exist: {p}[/red]")
+            feedback.update(Text.from_markup(f"[red]File does not exist: {p}[/red]"))
             return
 
         status = check_cookie_file(p)
         if not status.exists or status.count == 0:
-            self.log_message(f"[red]File contains no valid cookies: {p}[/red]")
+            feedback.update(Text.from_markup(f"[red]File contains no valid cookies: {p.name}[/red]"))
             return
 
         self.config.cookies_path = str(p)
         self.config.save()
         self.refresh_status()
-        self.log_message(f"[bold green]✓ Loaded {status.count} cookies from {p.name}![/bold green]")
+        feedback.update(Text.from_markup(f"[bold green]✓ Loaded {status.count} cookies from {p.name}![/bold green]"))
 
     def clear_cookies(self) -> None:
         """Delete current cookies file."""
@@ -256,7 +387,7 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
         if p.is_file():
             try:
                 p.unlink()
-                self.log_message(f"[yellow]Deleted {p.name}.[/yellow]")
+                self.refresh_status()
             except Exception as e:
-                self.log_message(f"[red]Error deleting {p.name}: {e}[/red]")
+                pass
         self.refresh_status()

@@ -1,7 +1,7 @@
 """Asynchronous UI tests for YTMusicDownloaderApp using Textual test harness."""
 
 import pytest
-from textual.widgets import Button, Input, ProgressBar, Select
+from textual.widgets import Button, Input, Label, ProgressBar, Select, TabbedContent
 
 from yt_music_downloader.config import AppConfig
 from yt_music_downloader.downloader import TrackInfo
@@ -106,10 +106,37 @@ async def test_auth_modal_flow(tmp_path):
         app.push_screen(auth_screen)
         await pilot.pause()
 
-        # Verify buttons exist
+        # Verify tabs exist
+        tabs = auth_screen.query_one("#auth-tabs", TabbedContent)
+        assert tabs is not None
+
+        # Verify buttons exist across tabs
         assert auth_screen.query_one("#btn-browser-login", Button) is not None
         assert auth_screen.query_one("#btn-sync-browser", Button) is not None
+        assert auth_screen.query_one("#btn-load-file", Button) is not None
+        assert auth_screen.query_one("#btn-clear-cookies", Button) is not None
         assert auth_screen.query_one("#btn-close", Button) is not None
+
+        # Switch to Tab 2 (1-Click Sync)
+        tabs.active = "tab-sync"
+        await pilot.pause()
+        select_browser = auth_screen.query_one("#select-browser", Select)
+        assert select_browser.value == "chrome"
+
+        # Switch to Tab 3 (Import File)
+        tabs.active = "tab-import"
+        await pilot.pause()
+        # Test empty file load
+        auth_screen.query_one("#btn-load-file", Button).press()
+        await pilot.pause()
+        feedback = auth_screen.query_one("#feedback-import", Label)
+        assert "Please specify" in str(feedback.render())
+
+        # Switch to Tab 4 (Cookie Status)
+        tabs.active = "tab-info"
+        await pilot.pause()
+        info_status = auth_screen.query_one("#info-status", Label)
+        assert info_status is not None
 
         # Close modal
         auth_screen.query_one("#btn-close", Button).press()
