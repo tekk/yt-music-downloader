@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yt-music-downloader"
+version = "1.0.0"
+description = "Cross-platform TUI application to download YouTube Music playlists with highest audio quality, browser authentication, and MP3/M4A re-encoding."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "textual>=8.0.0",
+    "yt-dlp>=2025.1.0",
+    "websockets>=12.0",
+    "requests>=2.31.0",
+    "mutagen>=1.47.0",
+    "platformdirs>=3.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+yt-music-dl = "yt_music_downloader.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["yt_music_downloader*"]
