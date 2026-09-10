@@ -266,6 +266,18 @@ class MainWindow(QMainWindow):
         act_pl.triggered.connect(self.open_playlists_dialog)
         self.addAction(act_pl)
 
+        # Ctrl+,: Settings
+        act_settings = QAction(self)
+        act_settings.setShortcut(QKeySequence("Ctrl+,"))
+        act_settings.triggered.connect(self.open_settings_dialog)
+        self.addAction(act_settings)
+
+        # Ctrl+Q: Quit
+        act_quit = QAction(self)
+        act_quit.setShortcut(QKeySequence("Ctrl+Q"))
+        act_quit.triggered.connect(self.close)
+        self.addAction(act_quit)
+
         # Esc: Cancel active download
         act_esc = QAction(self)
         act_esc.setShortcut(QKeySequence("Escape"))

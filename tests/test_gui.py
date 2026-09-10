@@ -153,3 +153,23 @@ def test_auth_dialog_rendering(qapp, tmp_path):
     assert dialog.tabs.count() == 4
     assert "Not Authenticated" in dialog.lbl_status_summary.text()
     dialog.close()
+
+
+def test_main_window_shortcuts(qapp, tmp_path):
+    """Test registered keyboard shortcuts on MainWindow."""
+    cfg = AppConfig(download_dir=str(tmp_path))
+    win = MainWindow(config=cfg)
+
+    shortcuts = [a.shortcut().toString() for a in win.actions() if not a.shortcut().isEmpty()]
+    assert "Ctrl+D" in shortcuts
+    assert "Ctrl+L" in shortcuts
+    assert "Ctrl+P" in shortcuts
+    assert "Ctrl+," in shortcuts
+    assert "Ctrl+Q" in shortcuts
+    assert "Esc" in shortcuts
+
+    # Test escape handling
+    win._is_downloading = False
+    win._handle_escape()  # should not crash
+
+    win.close()
