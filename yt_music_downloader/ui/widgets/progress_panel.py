@@ -34,9 +34,12 @@ class ProgressPanel(Widget):
     DEFAULT_CSS = """
     ProgressPanel {
         height: auto;
-        padding: 1;
+        padding: 0 1;
         background: $surface;
         border: solid $primary;
+    }
+    #progress-inner {
+        height: auto;
     }
     """
 
@@ -47,16 +50,14 @@ class ProgressPanel(Widget):
                 yield Label("Current Track:", classes="progress-label")
                 yield Label("0.0% • 0 B / 0 B", id="current-stat", classes="progress-stat")
 
-            with Horizontal():
-                yield ProgressBar(id="current-progress-bar", total=100, show_eta=False)
+            yield ProgressBar(id="current-progress-bar", total=100, show_eta=False)
 
             # Overall Playlist Progress
             with Horizontal(classes="progress-row"):
                 yield Label("Overall:", classes="progress-label")
                 yield Label("0 / 0 tracks (0%)", id="overall-stat", classes="progress-stat")
 
-            with Horizontal():
-                yield ProgressBar(id="overall-progress-bar", total=100, show_eta=False)
+            yield ProgressBar(id="overall-progress-bar", total=100, show_eta=False)
 
             # Status ticker
             yield Label("Status: Ready", id="status-ticker")

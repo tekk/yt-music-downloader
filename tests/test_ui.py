@@ -296,3 +296,24 @@ async def test_playlists_modal_escape_key(tmp_path, monkeypatch):
         assert len(app.screen_stack) == 1
 
 
+@pytest.mark.asyncio
+async def test_progress_panel_compact_and_no_screen_scroll(tmp_path):
+    """Verify progress bars are compact, adjacent, and the screen fits without scrolling."""
+    cfg = AppConfig(download_dir=str(tmp_path))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    # Test on standard 24-line terminal
+    async with app.run_test(size=(120, 24)) as pilot:
+        panel = app.query_one("#progress-panel")
+        assert panel.outer_size.height <= 7
+
+        # Progress bars should be separated by only 1 label row (Overall stat)
+        cur_bar = app.query_one("#current-progress-bar")
+        ovr_bar = app.query_one("#overall-progress-bar")
+        assert cur_bar.size.height == 1
+        assert ovr_bar.size.height == 1
+
+        # Check screen does not require vertical scrolling
+        assert app.screen.max_scroll_y == 0
+
+
