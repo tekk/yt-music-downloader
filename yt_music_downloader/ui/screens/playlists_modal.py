@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from rich.markup import escape
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
@@ -124,7 +125,15 @@ class PlaylistsModal(ModalScreen[Optional[UserPlaylistSummary]]):
         except Exception as e:
             def report_err():
                 status_lbl = self.query_one("#playlists-status", Label)
-                status_lbl.update(Text.from_markup(f"[bold red]Error fetching playlists:[/bold red] {e}"))
+                err_text = str(e)
+                if "401" in err_text or "Unauthorized" in err_text or "does not exist" in err_text:
+                    status_lbl.update(
+                        Text.from_markup(
+                            "[bold red]Session cookies expired or unauthorized.[/bold red] Please re-sync in [bold]Login / Cookies[/bold]."
+                        )
+                    )
+                else:
+                    status_lbl.update(Text.from_markup(f"[bold red]Error fetching playlists:[/bold red] {escape(err_text)}"))
 
             self.app.call_from_thread(report_err)
 
