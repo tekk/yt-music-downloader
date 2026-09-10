@@ -181,6 +181,11 @@ TabPane {
     color: $text;
 }
 
+Button:focus {
+    border: thick white;
+    text-style: bold;
+}
+
 /* Modal Dialogs */
 ModalScreen {
     align: center middle;

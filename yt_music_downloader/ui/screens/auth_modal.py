@@ -30,6 +30,29 @@ from ...browser_auth import (
 from ...config import AppConfig
 
 
+class ConfirmButton(Button):
+    """Button that visually transforms with high-contrast indicators when focused."""
+
+    def __init__(self, label: str = "✓ Accept & Continue", *args, **kwargs):
+        super().__init__(label, *args, **kwargs)
+        self._raw_label = label
+
+    def set_clean_label(self, text: str) -> None:
+        self._raw_label = text
+        if self.has_focus:
+            self.label = f"▶ {text} ◀"
+        else:
+            self.label = text
+
+    def on_focus(self) -> None:
+        clean = str(self._raw_label or self.label).strip("▶◀ ")
+        self.label = f"▶ {clean} ◀"
+
+    def on_blur(self) -> None:
+        clean = str(self._raw_label or self.label).strip("▶◀ ")
+        self.label = clean
+
+
 class AuthModal(ModalScreen[Optional[AppConfig]]):
     """Modal dialog with tabbed options for logging in and managing cookies."""
 
@@ -138,7 +161,31 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
     }
     #btn-close {
         height: 3;
-        min-width: 22;
+        min-width: 26;
+        text-style: bold;
+        background: $surface;
+        color: $success;
+        border: tall $success;
+    }
+    #btn-close:hover {
+        background: $surface-lighten-1;
+        border: thick $success;
+    }
+    #btn-close:focus {
+        background: $success;
+        color: #000000;
+        border: thick white;
+        text-style: bold;
+    }
+    #btn-close.auth-btn-default {
+        background: $surface;
+        color: $text;
+        border: tall $surface-lighten-2;
+    }
+    #btn-close.auth-btn-default:focus {
+        background: $primary;
+        color: #000000;
+        border: thick white;
         text-style: bold;
     }
     """
@@ -228,7 +275,7 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
             # Footer
             with Horizontal(id="auth-footer"):
                 yield Label("", id="footer-auth-status")
-                yield Button("✓ Accept & Close", id="btn-close", variant="success")
+                yield ConfirmButton("✓ Accept & Continue", id="btn-close", classes="auth-btn-success")
 
     def on_mount(self) -> None:
         self.refresh_status()
@@ -240,23 +287,26 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
         # Header Badge & Footer status
         badge = self.query_one("#auth-current-badge", Label)
         footer_status = self.query_one("#footer-auth-status", Label)
-        close_btn = self.query_one("#btn-close", Button)
+        close_btn = self.query_one("#btn-close", ConfirmButton)
 
         if status.is_authenticated:
             badge.update(Text.from_markup(f"[bold green]✓ Authenticated ({status.count} cookies)[/bold green]"))
             footer_status.update(Text.from_markup(f"[bold green]✓ Ready • {status.count} session cookies active[/bold green]"))
-            close_btn.variant = "success"
-            close_btn.label = "✓ Accept & Continue"
+            close_btn.set_class(True, "auth-btn-success")
+            close_btn.set_class(False, "auth-btn-default")
+            close_btn.set_clean_label("✓ Accept & Continue")
         elif status.exists:
             badge.update(Text.from_markup(f"[yellow]⚠ Cookies found ({status.count}, guest)[/yellow]"))
             footer_status.update(Text.from_markup(f"[yellow]⚠ Cookies found ({status.count}), but no active login[/yellow]"))
-            close_btn.variant = "primary"
-            close_btn.label = "Close"
+            close_btn.set_class(False, "auth-btn-success")
+            close_btn.set_class(True, "auth-btn-default")
+            close_btn.set_clean_label("Close")
         else:
             badge.update(Text.from_markup("[dim red]✗ Not Logged In[/dim red]"))
             footer_status.update(Text.from_markup("[dim]Guest mode (standard bitrate)[/dim]"))
-            close_btn.variant = "default"
-            close_btn.label = "Close"
+            close_btn.set_class(False, "auth-btn-success")
+            close_btn.set_class(True, "auth-btn-default")
+            close_btn.set_clean_label("Close")
 
         # Info Tab Labels
         info_status = self.query_one("#info-status", Label)
