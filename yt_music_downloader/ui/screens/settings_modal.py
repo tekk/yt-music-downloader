@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.screen import ModalScreen
@@ -44,10 +45,22 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
         width: 1fr;
     }
     .switch-row {
-        height: 2;
+        height: 3;
         margin-bottom: 1;
         layout: horizontal;
         align: left middle;
+    }
+    .switch-row Switch {
+        height: 3;
+        min-width: 10;
+        margin-right: 1;
+    }
+    .switch-row Switch:focus {
+        border: thick white;
+    }
+    .switch-status-label {
+        width: 18;
+        text-style: bold;
     }
     """
 
@@ -109,19 +122,35 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
                 with Horizontal(classes="switch-row"):
                     yield Label("Embed Cover Artwork:", classes="settings-label")
                     yield Switch(value=self.config.embed_artwork, id="switch-artwork")
+                    art_txt = "[bold green]ON (Enabled)[/bold green]" if self.config.embed_artwork else "[dim]OFF (Disabled)[/dim]"
+                    yield Label(Text.from_markup(art_txt), id="label-switch-artwork", classes="switch-status-label")
 
                 with Horizontal(classes="switch-row"):
                     yield Label("Embed ID3 / Metadata Tags:", classes="settings-label")
                     yield Switch(value=self.config.embed_metadata, id="switch-metadata")
+                    meta_txt = "[bold green]ON (Enabled)[/bold green]" if self.config.embed_metadata else "[dim]OFF (Disabled)[/dim]"
+                    yield Label(Text.from_markup(meta_txt), id="label-switch-metadata", classes="switch-status-label")
 
                 with Horizontal(classes="switch-row"):
                     yield Label("Create Folder for Playlists:", classes="settings-label")
                     yield Switch(value=self.config.auto_create_playlist_folder, id="switch-playlist-folder")
+                    fold_txt = "[bold green]ON (Enabled)[/bold green]" if self.config.auto_create_playlist_folder else "[dim]OFF (Disabled)[/dim]"
+                    yield Label(Text.from_markup(fold_txt), id="label-switch-playlist-folder", classes="switch-status-label")
 
             # Bottom Buttons
             with Horizontal(classes="modal-buttons"):
                 yield Button("Save & Apply", id="btn-save", variant="primary")
                 yield Button("Cancel", id="btn-cancel", variant="default")
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        switch_id = event.switch.id
+        if switch_id:
+            lbl_id = f"#label-{switch_id}"
+            txt = "[bold green]ON (Enabled)[/bold green]" if event.value else "[dim]OFF (Disabled)[/dim]"
+            try:
+                self.query_one(lbl_id, Label).update(Text.from_markup(txt))
+            except Exception:
+                pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-reset-dir":
