@@ -23,12 +23,27 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
         background: rgba(0, 0, 0, 0.7);
     }
     #settings-dialog {
-        width: 76;
+        width: 82;
         height: auto;
-        max-height: 85%;
+        max-height: 95%;
         background: $surface;
         border: thick $primary;
         padding: 1 2;
+        overflow-y: auto;
+    }
+    .modal-title {
+        text-align: center;
+        text-style: bold;
+        color: $primary;
+        margin-bottom: 1;
+        border-bottom: solid $surface-lighten-1;
+        padding-bottom: 1;
+    }
+    .modal-section-title {
+        text-style: bold;
+        color: $accent;
+        margin-top: 0;
+        margin-bottom: 0;
     }
     .settings-row {
         height: 3;
@@ -37,12 +52,16 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
         align: left middle;
     }
     .settings-label {
-        width: 26;
+        width: 28;
         text-style: bold;
         color: $text;
     }
     .settings-input {
         width: 1fr;
+        margin-right: 1;
+    }
+    #btn-reset-dir {
+        min-width: 12;
     }
     .switch-row {
         height: 3;
@@ -62,6 +81,16 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
         width: 18;
         text-style: bold;
     }
+    .modal-buttons {
+        height: 4;
+        layout: horizontal;
+        align: right middle;
+        margin-top: 1;
+    }
+    .modal-buttons Button {
+        min-width: 16;
+        margin-left: 1;
+    }
     """
 
     def __init__(self, config: AppConfig, *args, **kwargs):
@@ -72,25 +101,23 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
         with Vertical(id="settings-dialog"):
             yield Label("⚙ Application Settings", id="modal-title", classes="modal-title")
 
-            with ScrollableContainer():
-                # Download Folder
-                with Vertical():
-                    yield Label("Download Directory:", classes="modal-section-title")
-                    with Horizontal(classes="settings-row"):
-                        yield Input(value=self.config.download_dir, id="input-download-dir", classes="settings-input")
-                        yield Button("Reset", id="btn-reset-dir")
+            # Download Folder
+            yield Label("Download Directory:", classes="modal-section-title")
+            with Horizontal(classes="settings-row"):
+                yield Input(value=self.config.download_dir, id="input-download-dir", classes="settings-input")
+                yield Button("Reset", id="btn-reset-dir")
 
-                # Default Audio Format
-                with Horizontal(classes="settings-row"):
-                    yield Label("Default Audio Format:", classes="settings-label")
-                    formats = [
-                        ("MP3 (Universal compatibility)", "mp3"),
-                        ("M4A / AAC (Apple / Modern)", "m4a"),
-                        ("Original Stream (No Re-encoding)", "original"),
-                        ("FLAC (Lossless Container)", "flac"),
-                        ("OPUS (High Efficiency)", "opus"),
-                    ]
-                    yield Select(formats, value=self.config.audio_format, id="select-format")
+            # Default Audio Format
+            with Horizontal(classes="settings-row"):
+                yield Label("Default Audio Format:", classes="settings-label")
+                formats = [
+                    ("MP3 (Universal compatibility)", "mp3"),
+                    ("M4A / AAC (Apple / Modern)", "m4a"),
+                    ("Original Stream (No Re-encoding)", "original"),
+                    ("FLAC (Lossless Container)", "flac"),
+                    ("OPUS (High Efficiency)", "opus"),
+                ]
+                yield Select(formats, value=self.config.audio_format, id="select-format")
 
                 # MP3 Bitrate
                 with Horizontal(classes="settings-row"):
