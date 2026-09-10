@@ -26,6 +26,7 @@ from ...browser_auth import (
     check_cookie_file,
     detect_system_chromium,
     extract_from_installed_browser,
+    import_and_filter_cookie_file,
 )
 from ...config import AppConfig
 
@@ -306,11 +307,30 @@ class AuthDialog(QDialog):
             "Text Files (*.txt);;All Files (*)",
         )
         if path:
-            self.config.cookies_path = path
-            self.config.save()
-            self.lbl_import_feedback.setText(f"✓ Loaded cookies from {Path(path).name}!")
-            self.lbl_import_feedback.setStyleSheet("color: #00E676; font-weight: bold;")
-            self.refresh_status()
+            try:
+                status, discarded = import_and_filter_cookie_file(path, self.config.cookies_path)
+                if status.is_authenticated:
+                    msg = f"✓ Imported {status.count} YouTube cookies from {Path(path).name}!"
+                    if discarded > 0:
+                        msg += f"\n(Filtered out {discarded} unrelated cookies)"
+                    self.lbl_import_feedback.setText(msg)
+                    self.lbl_import_feedback.setStyleSheet("color: #00E676; font-weight: bold;")
+                    self.config.save()
+                    self.refresh_status()
+                elif status.exists and status.count > 0:
+                    msg = f"⚠ Imported {status.count} cookies, but no active YouTube login found."
+                    if discarded > 0:
+                        msg += f"\n(Filtered out {discarded} unrelated cookies)"
+                    self.lbl_import_feedback.setText(msg)
+                    self.lbl_import_feedback.setStyleSheet("color: #FFB300;")
+                    self.config.save()
+                    self.refresh_status()
+                else:
+                    self.lbl_import_feedback.setText(f"No valid YouTube/YouTube Music cookies found in {Path(path).name}.")
+                    self.lbl_import_feedback.setStyleSheet("color: #FF5252;")
+            except Exception as e:
+                self.lbl_import_feedback.setText(f"Import error: {e}")
+                self.lbl_import_feedback.setStyleSheet("color: #FF5252;")
 
     def _clear_cookies(self):
         p = Path(self.config.cookies_path)

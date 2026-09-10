@@ -36,6 +36,66 @@ AUTH_COOKIE_NAMES = {
     "APISID",
 }
 
+# Allowed YouTube domain suffixes
+YT_DOMAINS = {
+    "youtube.com",
+    "music.youtube.com",
+    "youtubekids.com",
+}
+
+# Domains under Google allowed for YouTube/Google identity authentication
+GOOGLE_AUTH_DOMAINS = {
+    "google.com",
+    "accounts.google.com",
+    "apis.google.com",
+    "myaccount.google.com",
+}
+
+# Necessary Google auth/session cookies for YouTube Innertube / Identity
+GOOGLE_AUTH_COOKIE_NAMES = {
+    "LOGIN_INFO",
+    "SAPISID",
+    "SID",
+    "SSID",
+    "HSID",
+    "APISID",
+    "SIDCC",
+    "PREF",
+    "SOCS",
+    "YSC",
+    "GPS",
+    "VISITOR_INFO1_LIVE",
+    "VISITOR_PRIVACY_METADATA",
+    "ACCOUNT_CHOOSER",
+    "LSID",
+    "__Host-1PLSID",
+    "__Host-3PLSID",
+    "__Host-GAPS",
+}
+
+GOOGLE_AUTH_PREFIXES = (
+    "__Secure-",
+)
+
+
+def is_yt_cookie(domain: str, name: str) -> bool:
+    """Return True only if cookie is necessary for YouTube / YouTube Music functionality."""
+    if not domain or not name:
+        return False
+    d = domain.lstrip(".").lower()
+
+    # 1. YouTube domains: include all cookies set specifically for YouTube
+    for yt_d in YT_DOMAINS:
+        if d == yt_d or d.endswith("." + yt_d):
+            return True
+
+    # 2. Google Identity domains: include only necessary authentication tokens
+    if d in GOOGLE_AUTH_DOMAINS:
+        if name in GOOGLE_AUTH_COOKIE_NAMES or name.startswith(GOOGLE_AUTH_PREFIXES):
+            return True
+
+    return False
+
 
 @dataclass
 class CookieStatus:
@@ -113,8 +173,11 @@ def detect_system_chromium() -> Optional[str]:
     return None
 
 
-def format_cookies_to_netscape(cookies: list[dict]) -> str:
-    """Format CDP cookies into standard Netscape cookies.txt format."""
+def format_cookies_to_netscape(cookies: list[dict], only_yt_needed: bool = True) -> str:
+    """Format CDP or dictionary cookies into standard Netscape cookies.txt format.
+    
+    If only_yt_needed is True, only cookies needed for YouTube/YouTube Music are included.
+    """
     lines = [
         "# Netscape HTTP Cookie File",
         "# http://curl.haxx.se/rfc/cookie_spec.html",
@@ -123,8 +186,12 @@ def format_cookies_to_netscape(cookies: list[dict]) -> str:
     ]
     for c in cookies:
         domain = c.get("domain", "")
-        if not domain:
+        name = c.get("name", "")
+        if not domain or not name:
             continue
+        if only_yt_needed and not is_yt_cookie(domain, name):
+            continue
+
         include_sub = "TRUE" if domain.startswith(".") else "FALSE"
         path = c.get("path", "/")
         secure = "TRUE" if c.get("secure", False) else "FALSE"
@@ -136,18 +203,129 @@ def format_cookies_to_netscape(cookies: list[dict]) -> str:
         else:
             expires_str = "0"
 
-        name = c.get("name", "")
         value = c.get("value", "")
         lines.append(f"{domain}\t{include_sub}\t{path}\t{secure}\t{expires_str}\t{name}\t{value}")
 
     return "\n".join(lines) + "\n"
 
 
-def check_cookie_file(cookie_path: str | Path) -> CookieStatus:
+def filter_cookie_lines(lines: list[str]) -> tuple[list[str], int]:
+    """Filter Netscape cookie format lines to only keep cookies needed for YouTube / YouTube Music.
+    
+    Returns:
+        tuple[list[str], int]: (filtered_lines, discarded_count)
+    """
+    kept_lines: list[str] = []
+    discarded_count = 0
+
+    has_header = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if kept_lines and kept_lines[-1] != "":
+                kept_lines.append("")
+            continue
+        if stripped.startswith("#"):
+            if "Netscape HTTP Cookie File" in stripped:
+                has_header = True
+            kept_lines.append(stripped)
+            continue
+
+        parts = stripped.split("\t")
+        if len(parts) >= 7:
+            domain = parts[0]
+            name = parts[5]
+            if is_yt_cookie(domain, name):
+                kept_lines.append(stripped)
+            else:
+                discarded_count += 1
+        else:
+            # Non-cookie or malformed data line
+            discarded_count += 1
+
+    if not has_header:
+        kept_lines.insert(0, "# Netscape HTTP Cookie File")
+        kept_lines.insert(1, "# Filtered for YouTube / YouTube Music functionality")
+
+    return kept_lines, discarded_count
+
+
+def sanitize_cookie_file(cookie_path: str | Path) -> tuple[int, int]:
+    """In-place sanitize a cookies file, stripping any cookies unrelated to YouTube / YouTube Music.
+    
+    Returns:
+        tuple[int, int]: (kept_cookie_count, discarded_cookie_count)
+    """
+    path = Path(cookie_path).expanduser().resolve()
+    if not path.is_file() or path.stat().st_size == 0:
+        return 0, 0
+
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+        filtered_lines, discarded = filter_cookie_lines(lines)
+        if discarded > 0:
+            tmp_path = path.with_suffix(".sanitize.tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(filtered_lines) + "\n")
+            tmp_path.replace(path)
+            logger.info(f"Sanitized {path.name}: removed {discarded} unrelated cookies.")
+
+        data_count = sum(1 for l in filtered_lines if l and not l.startswith("#"))
+        return data_count, discarded
+    except Exception as e:
+        logger.warning(f"Failed to sanitize cookie file {path}: {e}")
+        return 0, 0
+
+
+def import_and_filter_cookie_file(
+    source_path: str | Path,
+    target_path: Optional[str | Path] = None,
+) -> tuple[CookieStatus, int]:
+    """Import a Netscape cookies.txt file, filtering out all non-YouTube/YouTube Music cookies.
+    
+    Args:
+        source_path: Path to the input cookies file.
+        target_path: Path to write filtered cookies (defaults to default app cookies path).
+        
+    Returns:
+        tuple[CookieStatus, int]: (status of target file, count of discarded unrelated cookies)
+    """
+    src = Path(source_path).expanduser().resolve()
+    if not src.is_file():
+        raise FileNotFoundError(f"Source cookie file does not exist: {src}")
+
+    dst = Path(target_path or get_default_cookies_path()).expanduser().resolve()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(src, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
+
+    filtered_lines, discarded = filter_cookie_lines(lines)
+
+    # Check how many data cookies were kept
+    data_lines = [l for l in filtered_lines if l and not l.startswith("#")]
+    if not data_lines:
+        return CookieStatus(exists=False, file_path=str(dst)), discarded
+
+    # Write to target destination atomically
+    tmp_target = dst.with_suffix(".tmp")
+    with open(tmp_target, "w", encoding="utf-8") as f:
+        f.write("\n".join(filtered_lines) + "\n")
+    tmp_target.replace(dst)
+
+    status = check_cookie_file(dst, sanitize=False)
+    return status, discarded
+
+
+def check_cookie_file(cookie_path: str | Path, sanitize: bool = True) -> CookieStatus:
     """Check the status of an existing cookies file."""
-    path = Path(cookie_path)
+    path = Path(cookie_path).expanduser().resolve()
     if not path.is_file() or path.stat().st_size == 0:
         return CookieStatus(exists=False, file_path=str(path))
+
+    if sanitize:
+        sanitize_cookie_file(path)
 
     count = 0
     has_youtube = False
@@ -163,7 +341,7 @@ def check_cookie_file(cookie_path: str | Path) -> CookieStatus:
                 if len(parts) >= 7:
                     count += 1
                     domain, _, _, _, _, name, _ = parts[:7]
-                    if "youtube.com" in domain or "google.com" in domain:
+                    if is_yt_cookie(domain, name):
                         has_youtube = True
                         if name in AUTH_COOKIE_NAMES and name not in found_auth:
                             found_auth.append(name)
@@ -181,13 +359,20 @@ def check_cookie_file(cookie_path: str | Path) -> CookieStatus:
 
 
 def extract_from_installed_browser(browser_name: str, output_path: str | Path) -> CookieStatus:
-    """Extract cookies directly from an installed browser using yt-dlp."""
-    output_path = Path(output_path)
+    """Extract cookies from an installed browser, keeping only cookies needed for YouTube / YouTube Music."""
+    output_path = Path(output_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     jar = yt_dlp.cookies.extract_cookies_from_browser(browser_name)
-    jar.save(str(output_path))
-    return check_cookie_file(output_path)
+    
+    # Filter jar so only YouTube and essential Google auth cookies are saved
+    filtered_jar = yt_dlp.cookies.YoutubeDLCookieJar(str(output_path))
+    for cookie in jar:
+        if is_yt_cookie(cookie.domain, cookie.name):
+            filtered_jar.set_cookie(cookie)
+
+    filtered_jar.save(ignore_discard=True, ignore_expires=True)
+    return check_cookie_file(output_path, sanitize=False)
 
 
 class BrowserLoginSession:
@@ -296,7 +481,7 @@ class BrowserLoginSession:
                             cookies = resp.get("result", {}).get("cookies", [])
                             yt_cookies = [
                                 c for c in cookies
-                                if "youtube.com" in c.get("domain", "") or "google.com" in c.get("domain", "")
+                                if is_yt_cookie(c.get("domain", ""), c.get("name", ""))
                             ]
                             
                             found_auth = [

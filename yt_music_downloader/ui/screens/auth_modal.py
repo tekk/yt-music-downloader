@@ -27,6 +27,7 @@ from ...browser_auth import (
     check_cookie_file,
     detect_system_chromium,
     extract_from_installed_browser,
+    import_and_filter_cookie_file,
 )
 from ...config import AppConfig
 
@@ -452,15 +453,26 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
             feedback.update(Text.from_markup(f"[red]File does not exist: {p}[/red]"))
             return
 
-        status = check_cookie_file(p)
-        if not status.exists or status.count == 0:
-            feedback.update(Text.from_markup(f"[red]File contains no valid cookies: {p.name}[/red]"))
-            return
-
-        self.config.cookies_path = str(p)
-        self.config.save()
-        self.refresh_status()
-        feedback.update(Text.from_markup(f"[bold green]✓ Loaded {status.count} cookies from {p.name}![/bold green]"))
+        try:
+            status, discarded = import_and_filter_cookie_file(p, self.config.cookies_path)
+            if status.is_authenticated:
+                msg = f"[bold green]✓ Imported {status.count} YouTube cookies from {p.name}![/bold green]"
+                if discarded > 0:
+                    msg += f" [dim](Filtered out {discarded} unrelated cookies)[/dim]"
+                feedback.update(Text.from_markup(msg))
+                self.config.save()
+                self.refresh_status()
+            elif status.exists and status.count > 0:
+                msg = f"[yellow]⚠ Imported {status.count} cookies, but no active YouTube login found.[/yellow]"
+                if discarded > 0:
+                    msg += f" [dim](Filtered out {discarded} unrelated cookies)[/dim]"
+                feedback.update(Text.from_markup(msg))
+                self.config.save()
+                self.refresh_status()
+            else:
+                feedback.update(Text.from_markup(f"[red]No valid YouTube/YouTube Music cookies found in {p.name}.[/red]"))
+        except Exception as e:
+            feedback.update(Text.from_markup(f"[bold red]Import error:[/bold red] {e}"))
 
     def clear_cookies(self) -> None:
         """Delete current cookies file."""
