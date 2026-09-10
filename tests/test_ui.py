@@ -4,9 +4,10 @@ import pytest
 from textual.widgets import Button, Input, Label, ProgressBar, Select, TabbedContent
 
 from yt_music_downloader.config import AppConfig
-from yt_music_downloader.downloader import TrackInfo
+from yt_music_downloader.downloader import TrackInfo, UserPlaylistSummary
 from yt_music_downloader.ui.app import YTMusicDownloaderApp
 from yt_music_downloader.ui.screens.auth_modal import AuthModal
+from yt_music_downloader.ui.screens.playlists_modal import PlaylistsModal
 from yt_music_downloader.ui.screens.settings_modal import SettingsModal
 from yt_music_downloader.ui.widgets.progress_panel import ProgressPanel
 from yt_music_downloader.ui.widgets.track_table import TrackTable
@@ -207,4 +208,91 @@ async def test_escape_key_main_screen_actions(tmp_path):
         await pilot.press("escape")
         await pilot.pause()
         assert app.downloader._cancel_requested
+
+
+@pytest.mark.asyncio
+async def test_liked_songs_button_sets_url(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tsome_value\n")
+    cfg = AppConfig(cookies_path=str(cookie_file), download_dir=str(tmp_path))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    # Mock fetch_url_worker to prevent actual network calls during test
+    monkeypatch.setattr(app, "fetch_url_worker", lambda url: None)
+
+    async with app.run_test() as pilot:
+        btn = app.query_one("#btn-liked-songs", Button)
+        btn.press()
+        await pilot.pause()
+
+        url_input = app.query_one("#url-input", Input)
+        assert url_input.value == "https://music.youtube.com/playlist?list=LM"
+
+
+@pytest.mark.asyncio
+async def test_playlists_modal_flow(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tsome_value\n")
+    cfg = AppConfig(cookies_path=str(cookie_file), download_dir=str(tmp_path))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    mock_playlists = [
+        UserPlaylistSummary(id="LM", title="Liked Music", url="https://music.youtube.com/playlist?list=LM", track_count=100),
+        UserPlaylistSummary(id="PL1", title="My DnB Mix", url="https://music.youtube.com/playlist?list=PL1", track_count=15),
+    ]
+
+    monkeypatch.setattr(app, "fetch_url_worker", lambda url: None)
+    monkeypatch.setattr("yt_music_downloader.downloader.YTMusicDownloader.fetch_user_playlists", lambda self: mock_playlists)
+
+    async with app.run_test() as pilot:
+        # Press 'p' to open PlaylistsModal
+        await pilot.press("p")
+        await pilot.pause()
+
+        assert len(app.screen_stack) == 2
+        modal = app.screen_stack[-1]
+        assert isinstance(modal, PlaylistsModal)
+
+        # Wait for worker to populate
+        await pilot.pause(0.1)
+
+        # Filter for 'DnB'
+        filter_input = modal.query_one("#playlists-filter-input", Input)
+        filter_input.value = "DnB"
+        await pilot.pause()
+
+        assert len(modal._filtered_playlists) == 1
+        assert modal._filtered_playlists[0].title == "My DnB Mix"
+
+        # Select the playlist
+        select_btn = modal.query_one("#btn-select-playlist", Button)
+        select_btn.press()
+        await pilot.pause()
+
+        # Modal should be closed and URL input should be updated
+        assert len(app.screen_stack) == 1
+        url_input = app.query_one("#url-input", Input)
+        assert url_input.value == "https://music.youtube.com/playlist?list=PL1"
+
+
+@pytest.mark.asyncio
+async def test_playlists_modal_escape_key(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tsome_value\n")
+    cfg = AppConfig(cookies_path=str(cookie_file), download_dir=str(tmp_path))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    monkeypatch.setattr("yt_music_downloader.downloader.YTMusicDownloader.fetch_user_playlists", lambda self: [])
+
+    async with app.run_test() as pilot:
+        modal = PlaylistsModal(cfg)
+        app.push_screen(modal)
+        await pilot.pause()
+        assert len(app.screen_stack) == 2
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert len(app.screen_stack) == 1
+
 

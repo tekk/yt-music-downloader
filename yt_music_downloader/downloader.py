@@ -60,6 +60,19 @@ class PlaylistInfo:
 
 
 @dataclass
+class UserPlaylistSummary:
+    """Summary of a user's personal playlist from their library."""
+
+    id: str
+    title: str
+    url: str
+    track_count: Optional[int] = None
+    channel: str = ""
+    thumbnail_url: str = ""
+
+
+
+@dataclass
 class DownloadProgressUpdate:
     """Real-time progress update event."""
 
@@ -158,6 +171,66 @@ class YTMusicDownloader:
                     tracks=[track],
                     thumbnail_url=info.get("thumbnail") or "",
                 )
+
+    def fetch_user_playlists(self) -> List[UserPlaylistSummary]:
+        """Fetch list of user's personal and saved playlists from their authenticated feed."""
+        if not self.config.has_cookies():
+            raise ValueError("You must be logged in with cookies to fetch your personal playlists.")
+
+        ydl_opts: Dict[str, Any] = {
+            "extract_flat": True,
+            "quiet": True,
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+            "cookiefile": self.config.cookies_path,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info("https://www.youtube.com/feed/playlists", download=False)
+            if not info:
+                return []
+
+            raw_entries = list(info.get("entries") or [])
+            playlists: List[UserPlaylistSummary] = []
+            seen_ids = set()
+
+            for entry in raw_entries:
+                if not entry:
+                    continue
+                p_id = entry.get("id") or ""
+                if not p_id or p_id in seen_ids:
+                    continue
+                seen_ids.add(p_id)
+
+                url = entry.get("url") or f"https://music.youtube.com/playlist?list={p_id}"
+                if "playlist?list=" not in url:
+                    url = f"https://music.youtube.com/playlist?list={p_id}"
+                else:
+                    url = url.replace("www.youtube.com", "music.youtube.com")
+
+                count = entry.get("playlist_count") or entry.get("item_count")
+                playlists.append(
+                    UserPlaylistSummary(
+                        id=p_id,
+                        title=entry.get("title") or f"Playlist {p_id}",
+                        url=url,
+                        track_count=int(count) if count is not None else None,
+                        channel=entry.get("uploader") or entry.get("channel") or "",
+                        thumbnail_url=entry.get("thumbnail") or "",
+                    )
+                )
+
+            # Prepend Liked Music (YouTube Music LM) for quick access if not present
+            if "LM" not in seen_ids:
+                liked_music = UserPlaylistSummary(
+                    id="LM",
+                    title="♥ Liked Music (YouTube Music)",
+                    url="https://music.youtube.com/playlist?list=LM",
+                    channel="YouTube Music",
+                )
+                playlists.insert(0, liked_music)
+
+            return playlists
 
     def _build_ydl_opts(
         self,

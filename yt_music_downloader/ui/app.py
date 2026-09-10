@@ -29,9 +29,11 @@ from ..downloader import (
     DownloadProgressUpdate,
     PlaylistInfo,
     TrackInfo,
+    UserPlaylistSummary,
     YTMusicDownloader,
 )
 from .screens.auth_modal import AuthModal
+from .screens.playlists_modal import PlaylistsModal
 from .screens.settings_modal import SettingsModal
 from .widgets.progress_panel import ProgressPanel
 from .widgets.track_table import TrackTable
@@ -48,6 +50,7 @@ class YTMusicDownloaderApp(App):
         Binding("t", "toggle_theme", "Toggle Dark/Light", priority=True),
         Binding("f2", "toggle_theme", "Toggle Dark/Light", show=False),
         Binding("l", "open_auth", "Login / Cookies", priority=True),
+        Binding("p", "open_playlists", "My Playlists", priority=True),
         Binding("s", "open_settings", "Settings", priority=True),
         Binding("d", "start_download", "Download", priority=True),
         Binding("c", "cancel_download", "Cancel", priority=True),
@@ -89,6 +92,8 @@ class YTMusicDownloaderApp(App):
                     id="url-input",
                 )
                 yield Button("🔍 Inspect", id="inspect-btn", variant="primary")
+                yield Button("♥ Liked Songs", id="btn-liked-songs", variant="default")
+                yield Button("📚 My Playlists", id="btn-my-playlists", variant="default")
 
             with Horizontal(id="options-row"):
                 with Horizontal(classes="option-item"):
@@ -160,6 +165,10 @@ class YTMusicDownloaderApp(App):
         btn_id = event.button.id
         if btn_id == "inspect-btn":
             self.action_inspect_url()
+        elif btn_id == "btn-liked-songs":
+            self.action_load_liked_songs()
+        elif btn_id == "btn-my-playlists":
+            self.action_open_playlists()
         elif btn_id == "download-btn":
             self.action_start_download()
         elif btn_id == "cancel-btn":
@@ -170,6 +179,10 @@ class YTMusicDownloaderApp(App):
             self.action_open_settings()
         elif btn_id in ("theme-btn", "btn-header-theme"):
             self.action_toggle_theme()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "url-input":
+            self.action_inspect_url()
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "format-select":
@@ -192,6 +205,34 @@ class YTMusicDownloaderApp(App):
         self.config.theme = new_theme
         self.config.save()
         self.log_message(f"Theme switched to [bold]{new_theme}[/bold]")
+
+    def action_load_liked_songs(self) -> None:
+        """Load user's Liked Music (LM) playlist."""
+        if not self.config.has_cookies():
+            self.log_message("[yellow]Notice: You must log in via 'Login / Cookies' to access your personal Liked Songs.[/yellow]")
+            self.action_open_auth()
+            return
+
+        self.log_message("[bold cyan]Loading Liked Songs from YouTube Music...[/bold cyan]")
+        url_input = self.query_one("#url-input", Input)
+        url_input.value = "https://music.youtube.com/playlist?list=LM"
+        self.action_inspect_url()
+
+    def action_open_playlists(self) -> None:
+        """Open modal to browse and select user's personal playlists."""
+        if not self.config.has_cookies():
+            self.log_message("[yellow]Notice: You must log in via 'Login / Cookies' to access your personal playlists.[/yellow]")
+            self.action_open_auth()
+            return
+
+        def handle_playlist_selected(selected: Optional[UserPlaylistSummary]):
+            if selected:
+                self.log_message(f"[bold cyan]Selected playlist:[/bold cyan] {selected.title}")
+                url_input = self.query_one("#url-input", Input)
+                url_input.value = selected.url
+                self.action_inspect_url()
+
+        self.push_screen(PlaylistsModal(self.config), handle_playlist_selected)
 
     def action_open_auth(self) -> None:
         """Open Authentication and Cookie Grabber modal."""

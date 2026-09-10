@@ -83,3 +83,60 @@ def test_downloader_cancel_flag():
     assert downloader._cancel_requested
     downloader.reset_cancel()
     assert not downloader._cancel_requested
+
+
+def test_fetch_user_playlists_no_cookies(tmp_path):
+    cfg = AppConfig(cookies_path=str(tmp_path / "nonexistent_cookies.txt"))
+    downloader = YTMusicDownloader(cfg)
+    with pytest.raises(ValueError, match="cookies"):
+        downloader.fetch_user_playlists()
+
+
+def test_fetch_user_playlists_parsing(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tsome_value\n")
+    cfg = AppConfig(cookies_path=str(cookie_file))
+    downloader = YTMusicDownloader(cfg)
+
+    mock_feed = {
+        "entries": [
+            {
+                "id": "PL123",
+                "title": "Chill Vibes",
+                "url": "https://www.youtube.com/playlist?list=PL123",
+                "playlist_count": 25,
+                "uploader": "Test Channel",
+            },
+            {
+                "id": "PL456",
+                "title": "Workout Hits",
+                "url": "https://music.youtube.com/playlist?list=PL456",
+                "item_count": 10,
+                "channel": "My Account",
+            },
+        ]
+    }
+
+    class MockYDL:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download=False):
+            return mock_feed
+
+    monkeypatch.setattr("yt_dlp.YoutubeDL", MockYDL)
+
+    playlists = downloader.fetch_user_playlists()
+    assert len(playlists) == 3  # Prepend LM + 2 user playlists
+    assert playlists[0].id == "LM"
+    assert "Liked Music" in playlists[0].title
+    assert playlists[1].id == "PL123"
+    assert playlists[1].title == "Chill Vibes"
+    assert playlists[1].track_count == 25
+    assert "music.youtube.com" in playlists[1].url
+    assert playlists[2].id == "PL456"
+    assert playlists[2].track_count == 10
+
