@@ -9,6 +9,7 @@ from typing import Optional
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -190,10 +191,20 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
     }
     """
 
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", priority=True),
+    ]
+
     def __init__(self, config: AppConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = config
         self._login_session: Optional[BrowserLoginSession] = None
+
+    def action_dismiss_modal(self) -> None:
+        """Close modal on Esc keypress."""
+        if self._login_session:
+            self._login_session.stop()
+        self.dismiss(self.config)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="auth-dialog"):

@@ -7,6 +7,7 @@ from typing import Optional
 
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, Switch
@@ -16,6 +17,10 @@ from ...config import AppConfig, get_default_music_dir
 
 class SettingsModal(ModalScreen[Optional[AppConfig]]):
     """Modal dialog for editing app settings."""
+
+    BINDINGS = [
+        Binding("escape", "cancel_modal", "Cancel / Close", priority=True),
+    ]
 
     DEFAULT_CSS = """
     SettingsModal {
@@ -96,6 +101,10 @@ class SettingsModal(ModalScreen[Optional[AppConfig]]):
     def __init__(self, config: AppConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = config
+
+    def action_cancel_modal(self) -> None:
+        """Cancel and close modal on Esc keypress."""
+        self.dismiss(None)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="settings-dialog"):

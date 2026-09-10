@@ -141,3 +141,70 @@ async def test_auth_modal_flow(tmp_path):
         # Close modal
         auth_screen.query_one("#btn-close", Button).press()
         await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_escape_key_dismisses_settings_modal(tmp_path):
+    cfg = AppConfig(download_dir=str(tmp_path), audio_format="mp3")
+    app = YTMusicDownloaderApp(config=cfg)
+
+    async with app.run_test() as pilot:
+        settings_screen = SettingsModal(cfg)
+        app.push_screen(settings_screen)
+        await pilot.pause()
+        assert len(app.screen_stack) == 2
+
+        # Change format select to m4a (unsaved)
+        format_select = settings_screen.query_one("#select-format", Select)
+        format_select.value = "m4a"
+
+        # Press escape - should dismiss without saving
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert len(app.screen_stack) == 1
+        assert cfg.audio_format == "mp3"
+
+
+@pytest.mark.asyncio
+async def test_escape_key_dismisses_auth_modal(tmp_path):
+    cfg = AppConfig(cookies_path=str(tmp_path / "cookies.txt"))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    async with app.run_test() as pilot:
+        auth_screen = AuthModal(cfg)
+        app.push_screen(auth_screen)
+        await pilot.pause()
+        assert len(app.screen_stack) == 2
+
+        # Press escape - should dismiss
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert len(app.screen_stack) == 1
+
+
+@pytest.mark.asyncio
+async def test_escape_key_main_screen_actions(tmp_path):
+    cfg = AppConfig(download_dir=str(tmp_path))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    async with app.run_test() as pilot:
+        # Focus the url input
+        url_input = app.query_one("#url-input", Input)
+        url_input.focus()
+        await pilot.pause()
+        assert app.focused == url_input
+
+        # Press escape - should unfocus
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.focused is None
+
+        # Simulate downloading and test escape cancels download
+        app._is_downloading = True
+        assert not app.downloader._cancel_requested
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.downloader._cancel_requested
+

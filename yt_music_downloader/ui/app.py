@@ -52,6 +52,7 @@ class YTMusicDownloaderApp(App):
         Binding("d", "start_download", "Download", priority=True),
         Binding("c", "cancel_download", "Cancel", priority=True),
         Binding("i", "inspect_url", "Inspect URL", priority=True),
+        Binding("escape", "handle_escape", "Cancel / Back", show=False),
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+q", "quit", "Quit", show=False),
     ]
@@ -281,6 +282,18 @@ class YTMusicDownloaderApp(App):
             self.downloader.cancel()
             panel = self.query_one("#progress-panel", ProgressPanel)
             panel.set_status("Cancelling...")
+
+    def action_handle_escape(self) -> None:
+        """Handle Esc keypress: dismiss modal, cancel download, or clear focus."""
+        if len(self.screen_stack) > 1:
+            try:
+                self.pop_screen()
+            except Exception:
+                pass
+        elif self._is_downloading:
+            self.action_cancel_download()
+        elif self.focused:
+            self.set_focus(None)
 
     @work(thread=True)
     def download_worker(self, playlist: PlaylistInfo) -> None:
