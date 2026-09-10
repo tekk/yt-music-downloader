@@ -16,6 +16,7 @@ dependencies = [
     "requests>=2.31.0",
     "mutagen>=1.47.0",
     "platformdirs>=3.6.0",
+    "PyQt6>=6.6.0",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ dev = [
 
 [project.scripts]
 yt-music-dl = "yt_music_downloader.cli:main"
+yt-music-gui = "yt_music_downloader.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

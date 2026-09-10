@@ -45,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         help="Terminal theme (e.g. textual-dark, textual-light, nord, solarized-light)",
     )
     parser.add_argument(
+        "-g", "--gui",
+        action="store_true",
+        help="Launch modern Desktop GUI client instead of terminal TUI",
+    )
+    parser.add_argument(
         "-v", "--version",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -66,6 +71,18 @@ def main() -> None:
         config.cookies_path = str(Path(args.cookies).expanduser().resolve())
     if args.theme:
         config.theme = args.theme
+
+    if args.gui:
+        from PyQt6.QtWidgets import QApplication
+        from .gui.app import MainWindow
+        from .gui.styles import DARK_THEME_QSS, load_application_fonts
+
+        qapp = QApplication(sys.argv)
+        load_application_fonts()
+        qapp.setStyleSheet(DARK_THEME_QSS)
+        win = MainWindow(config=config, initial_url=args.url)
+        win.show()
+        sys.exit(qapp.exec())
 
     app = YTMusicDownloaderApp(config=config, initial_url=args.url)
     app.run()
