@@ -124,15 +124,22 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
         color: $text;
     }
     #auth-footer {
-        height: 3;
+        height: 4;
         dock: bottom;
         layout: horizontal;
-        align: right middle;
+        align: left middle;
         border-top: solid $surface-lighten-1;
-        padding-top: 1;
+        padding: 0 1;
+    }
+    #footer-auth-status {
+        width: 1fr;
+        height: 1;
+        text-style: bold;
     }
     #btn-close {
-        min-width: 16;
+        height: 3;
+        min-width: 22;
+        text-style: bold;
     }
     """
 
@@ -220,7 +227,8 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
 
             # Footer
             with Horizontal(id="auth-footer"):
-                yield Button("Done / Close", id="btn-close", variant="default")
+                yield Label("", id="footer-auth-status")
+                yield Button("✓ Accept & Close", id="btn-close", variant="success")
 
     def on_mount(self) -> None:
         self.refresh_status()
@@ -229,14 +237,26 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
     def refresh_status(self) -> None:
         status = check_cookie_file(self.config.cookies_path)
 
-        # Header Badge
+        # Header Badge & Footer status
         badge = self.query_one("#auth-current-badge", Label)
+        footer_status = self.query_one("#footer-auth-status", Label)
+        close_btn = self.query_one("#btn-close", Button)
+
         if status.is_authenticated:
             badge.update(Text.from_markup(f"[bold green]✓ Authenticated ({status.count} cookies)[/bold green]"))
+            footer_status.update(Text.from_markup(f"[bold green]✓ Ready • {status.count} session cookies active[/bold green]"))
+            close_btn.variant = "success"
+            close_btn.label = "✓ Accept & Continue"
         elif status.exists:
             badge.update(Text.from_markup(f"[yellow]⚠ Cookies found ({status.count}, guest)[/yellow]"))
+            footer_status.update(Text.from_markup(f"[yellow]⚠ Cookies found ({status.count}), but no active login[/yellow]"))
+            close_btn.variant = "primary"
+            close_btn.label = "Close"
         else:
             badge.update(Text.from_markup("[dim red]✗ Not Logged In[/dim red]"))
+            footer_status.update(Text.from_markup("[dim]Guest mode (standard bitrate)[/dim]"))
+            close_btn.variant = "default"
+            close_btn.label = "Close"
 
         # Info Tab Labels
         info_status = self.query_one("#info-status", Label)
