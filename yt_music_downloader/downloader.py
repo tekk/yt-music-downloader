@@ -164,6 +164,42 @@ class TrackInfo:
         return f"{m:02d}:{s:02d}"
 
 
+VALID_AUDIO_EXTENSIONS = {".mp3", ".m4a", ".flac", ".opus", ".webm", ".ogg", ".wav", ".aac"}
+
+
+def is_track_already_downloaded(track: TrackInfo, target_folder: Path, preferred_format: str = "") -> bool:
+    """Check whether a track's finished audio file already exists on disk in target_folder."""
+    if not target_folder.exists() or not target_folder.is_dir():
+        return False
+
+    clean_artist = sanitize_filename_component(track.artist)
+    clean_title = sanitize_filename_component(track.title)
+    expected_stem = f"{clean_artist} - {clean_title}".lower()
+
+    # If preferred format specified, check that direct match first
+    if preferred_format and preferred_format.lower() != "original":
+        pref_file = target_folder / f"{clean_artist} - {clean_title}.{preferred_format.lower()}"
+        if pref_file.is_file() and pref_file.stat().st_size > 0:
+            part_file = pref_file.with_name(pref_file.name + ".part")
+            ytdl_file = pref_file.with_name(pref_file.name + ".ytdl")
+            if not part_file.exists() and not ytdl_file.exists():
+                return True
+
+    # Check for any valid finished audio file with matching stem
+    try:
+        for f in target_folder.iterdir():
+            if f.is_file() and f.suffix.lower() in VALID_AUDIO_EXTENSIONS:
+                if f.stem.lower() == expected_stem and f.stat().st_size > 0:
+                    part_file = f.with_name(f.name + ".part")
+                    ytdl_file = f.with_name(f.name + ".ytdl")
+                    if not part_file.exists() and not ytdl_file.exists():
+                        return True
+    except Exception:
+        pass
+
+    return False
+
+
 @dataclass
 class PlaylistInfo:
     """Metadata for a playlist, album, or single track."""
@@ -232,6 +268,30 @@ class YTMusicDownloader:
 
     def reset_cancel(self) -> None:
         self._cancel_requested = False
+
+    def get_target_folder(self, playlist: PlaylistInfo) -> Path:
+        """Resolve the target directory path for a playlist or single track."""
+        dest_dir = Path(self.config.download_dir)
+        safe_title = "".join(c for c in playlist.title if c.isalnum() or c in (" ", "-", "_", ".")).strip() or "YT-Music"
+        if playlist.is_playlist and self.config.auto_create_playlist_folder:
+            return dest_dir / safe_title
+        return dest_dir
+
+    def check_existing_tracks(self, playlist: PlaylistInfo) -> int:
+        """Detect already downloaded files on disk and mark their status as 'Done'.
+
+        Returns the count of tracks marked as Done.
+        """
+        target_folder = self.get_target_folder(playlist)
+        count = 0
+        for track in playlist.tracks:
+            if track.status == "Done":
+                count += 1
+            elif is_track_already_downloaded(track, target_folder, self.config.audio_format):
+                track.status = "Done"
+                track.percent = 100.0
+                count += 1
+        return count
 
     def fetch_info(self, url: str) -> PlaylistInfo:
         """Extract playlist or video metadata without downloading media."""
@@ -460,26 +520,55 @@ class YTMusicDownloader:
             raise DependencyError(ffmpeg_err)
 
         total_tracks = len(playlist.tracks)
-        completed_count = 0
-        dest_dir = Path(self.config.download_dir)
-
-        # Sanitize folder name
-        safe_title = "".join(c for c in playlist.title if c.isalnum() or c in (" ", "-", "_", ".")).strip() or "YT-Music"
-
-        if playlist.is_playlist and self.config.auto_create_playlist_folder:
-            target_folder = dest_dir / safe_title
-        else:
-            target_folder = dest_dir
-
+        target_folder = self.get_target_folder(playlist)
         target_folder.mkdir(parents=True, exist_ok=True)
         on_log(f"Destination directory: {target_folder}")
+
+        # Detect already downloaded files on disk and mark them as Done
+        for track in playlist.tracks:
+            if track.status != "Done" and is_track_already_downloaded(track, target_folder, self.config.audio_format):
+                track.status = "Done"
+                track.percent = 100.0
+                on_track_update(track)
+
+        completed_count = sum(1 for t in playlist.tracks if t.status == "Done")
+
+        # If all tracks are already downloaded, report completion immediately
+        if completed_count >= total_tracks:
+            on_log(f"All {total_tracks} tracks are already downloaded (status: Done). Nothing to download.")
+            on_progress_update(
+                DownloadProgressUpdate(
+                    track_index=total_tracks,
+                    total_tracks=total_tracks,
+                    track_title="All tracks",
+                    track_artist="",
+                    track_percent=100.0,
+                    downloaded_bytes=0,
+                    total_bytes=0,
+                    speed=0.0,
+                    eta=0,
+                    overall_percent=100.0,
+                    overall_completed=total_tracks,
+                    status_text="All tracks already downloaded",
+                )
+            )
+            return
+
+        if completed_count > 0:
+            on_log(f"Skipping {completed_count} already completed tracks; downloading {total_tracks - completed_count} remaining tracks.")
 
         for i, track in enumerate(playlist.tracks, start=1):
             if self._cancel_requested:
                 on_log("Download operation cancelled by user.")
-                track.status = "Skipped"
-                on_track_update(track)
+                if track.status != "Done":
+                    track.status = "Skipped"
+                    on_track_update(track)
                 break
+
+            # ONLY download files that are not "Done", so undownloaded ones
+            if track.status == "Done":
+                on_log(f"[{i}/{total_tracks}] Skipping already completed: {track.artist} - {track.title}")
+                continue
 
             track.status = "Downloading"
             on_track_update(track)
@@ -605,8 +694,9 @@ class YTMusicDownloader:
                 )
 
             except DownloadCancelled:
-                track.status = "Skipped"
-                on_track_update(track)
+                if track.status != "Done":
+                    track.status = "Skipped"
+                    on_track_update(track)
                 on_log(f"[{i}/{total_tracks}] Cancelled: {track.title}")
                 break
             except Exception as e:

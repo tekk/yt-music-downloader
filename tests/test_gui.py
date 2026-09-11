@@ -268,3 +268,65 @@ def test_main_window_window_icon(qapp, tmp_path):
     win.close()
 
 
+def test_main_window_start_download_all_done(qapp, tmp_path, monkeypatch):
+    """Verify clicking download when all tracks are Done shows notification and does not start worker."""
+    from unittest.mock import MagicMock
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo
+
+    cfg = AppConfig(download_dir=str(tmp_path))
+    win = MainWindow(config=cfg)
+
+    t1 = TrackInfo(index=1, artist="A", title="B", status="Done", percent=100.0)
+    win.current_playlist = PlaylistInfo(
+        title="All Done",
+        author="Artist",
+        url="https://music.youtube.com/playlist?list=1",
+        is_playlist=True,
+        track_count=1,
+        tracks=[t1],
+    )
+
+    # Mock QMessageBox.information so it doesn't block
+    mock_box = MagicMock()
+    monkeypatch.setattr("PyQt6.QtWidgets.QMessageBox.information", mock_box)
+
+    win.start_download()
+
+    assert win._is_downloading is False
+    assert mock_box.called
+    assert "already downloaded" in win.log_console.toPlainText()
+    win.close()
+
+
+def test_main_window_start_download_partially_done(qapp, tmp_path, monkeypatch):
+    """Verify clicking download with partially completed tracks starts with correct progress offset."""
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo
+
+    cfg = AppConfig(download_dir=str(tmp_path))
+    win = MainWindow(config=cfg)
+
+    t1 = TrackInfo(index=1, artist="Artist 1", title="Song 1", status="Done", percent=100.0)
+    t2 = TrackInfo(index=2, artist="Artist 2", title="Song 2", status="Pending", percent=0.0)
+    win.current_playlist = PlaylistInfo(
+        title="Half Done",
+        author="Artist",
+        url="https://music.youtube.com/playlist?list=2",
+        is_playlist=True,
+        track_count=2,
+        tracks=[t1, t2],
+    )
+
+    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ffmpeg")
+
+    # Mock worker start so it doesn't run thread
+    monkeypatch.setattr("yt_music_downloader.gui.app.DownloadWorker.start", lambda self: None)
+
+    win.start_download()
+
+    assert win._is_downloading is True
+    # Overall bar should show 1 / 2 (50%)
+    assert "1 / 2 tracks (50%)" in win.progress_card.lbl_overall_stats.text()
+    assert "Starting download of 1 undownloaded tracks (1/2 already completed)" in win.log_console.toPlainText()
+    win.close()
+
+

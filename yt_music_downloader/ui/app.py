@@ -291,18 +291,26 @@ class YTMusicDownloaderApp(App):
         try:
             playlist_info = self.downloader.fetch_info(url)
             self.current_playlist = playlist_info
+            already_done = self.downloader.check_existing_tracks(playlist_info)
 
             def update_ui():
                 self.query_one("#inspect-btn", Button).set_class(False, "-loading")
                 table = self.query_one("#tracks-widget", TrackTable)
                 table.populate(playlist_info.tracks)
+                extra = f" ({already_done} already downloaded)" if already_done > 0 else ""
                 self.log_message(
-                    f"[bold green]✓ Loaded:[/bold green] [bold]{playlist_info.title}[/bold] by {playlist_info.author} ({playlist_info.track_count} tracks)"
+                    f"[bold green]✓ Loaded:[/bold green] [bold]{playlist_info.title}[/bold] by {playlist_info.author} ({playlist_info.track_count} tracks{extra})"
                 )
                 panel = self.query_one("#progress-panel", ProgressPanel)
                 panel.reset()
-                panel.update_overall(0, playlist_info.track_count, 0.0)
-                panel.set_status(f"Ready to download {playlist_info.track_count} tracks")
+                pct = (already_done / playlist_info.track_count * 100.0) if playlist_info.track_count > 0 else 0.0
+                panel.update_overall(already_done, playlist_info.track_count, pct)
+                if already_done >= playlist_info.track_count:
+                    panel.set_status("All tracks already downloaded")
+                elif already_done > 0:
+                    panel.set_status(f"Ready: {playlist_info.track_count - already_done} undownloaded tracks remaining")
+                else:
+                    panel.set_status(f"Ready to download {playlist_info.track_count} tracks")
 
             self.call_from_thread(update_ui)
 
@@ -324,7 +332,17 @@ class YTMusicDownloaderApp(App):
                 self.log_message("[red]Please enter a URL and inspect tracks before downloading.[/red]")
             return
 
-        if self._is_downloading:
+        # Check existing tracks to ensure status is up to date
+        self.downloader.check_existing_tracks(self.current_playlist)
+        table = self.query_one("#tracks-widget", TrackTable)
+        table.populate(self.current_playlist.tracks)
+
+        undownloaded = [t for t in self.current_playlist.tracks if t.status != "Done"]
+        if not undownloaded:
+            self.notify("All tracks are already downloaded!", title="Already Downloaded", timeout=4)
+            self.log_message(f"[green]All {self.current_playlist.track_count} tracks in this playlist are already downloaded.[/green]")
+            panel = self.query_one("#progress-panel", ProgressPanel)
+            panel.set_status("All tracks already downloaded")
             return
 
         # Check ffmpeg requirement before starting
@@ -363,10 +381,18 @@ class YTMusicDownloaderApp(App):
     @work(thread=True)
     def download_worker(self, playlist: PlaylistInfo) -> None:
         """Execute downloads in background thread."""
-        self.call_from_thread(
-            self.log_message,
-            f"[bold cyan]Starting download of '{playlist.title}' ({playlist.track_count} tracks)[/bold cyan]",
-        )
+        already_done = len(playlist.tracks) - len([t for t in playlist.tracks if t.status != "Done"])
+        if already_done > 0:
+            remaining = len(playlist.tracks) - already_done
+            self.call_from_thread(
+                self.log_message,
+                f"[bold cyan]Starting download of {remaining} undownloaded tracks in '{playlist.title}' ({already_done} already completed)[/bold cyan]",
+            )
+        else:
+            self.call_from_thread(
+                self.log_message,
+                f"[bold cyan]Starting download of '{playlist.title}' ({playlist.track_count} tracks)[/bold cyan]",
+            )
 
         def on_track_update(track: TrackInfo):
             def ui():

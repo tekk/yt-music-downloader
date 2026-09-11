@@ -4,7 +4,7 @@ set -euo pipefail
 # Build Debian .deb package for yt-music-downloader
 # Usage: ./packaging/build_deb.sh <version> <output_dir> [binary_dir]
 
-VERSION="${1:-0.0.5}"
+VERSION="${1:-0.0.6}"
 # Strip leading 'v' if present (e.g. v0.0.2 -> 0.0.2)
 VERSION="${VERSION#v}"
 OUTPUT_DIR="${2:-dist}"

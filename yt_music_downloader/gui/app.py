@@ -370,12 +370,24 @@ class MainWindow(QMainWindow):
         self.btn_inspect.setEnabled(True)
         self.btn_inspect.setText("🔍 Inspect")
         self.current_playlist = info
+
+        already_done = self.downloader.check_existing_tracks(info)
         self.track_table.populate(info.tracks)
         self.tabs.setCurrentIndex(0)  # Switch to track list
 
-        msg = f"✓ Loaded '{info.title}' ({info.track_count} tracks)"
+        if already_done > 0:
+            msg = f"✓ Loaded '{info.title}' ({info.track_count} tracks, {already_done} already downloaded)"
+        else:
+            msg = f"✓ Loaded '{info.title}' ({info.track_count} tracks)"
         self.progress_card.set_status(msg)
         self.log_message(f"Successfully loaded '{info.title}' ({info.track_count} tracks by {info.author})")
+        if already_done > 0:
+            self.log_message(f"  ↳ Found {already_done}/{info.track_count} already downloaded tracks in download folder.")
+            self.progress_card.update_overall(
+                completed=already_done,
+                total=info.track_count,
+                percent=(already_done / info.track_count) * 100.0 if info.track_count > 0 else 0.0,
+            )
 
     def _on_inspect_error(self, err: str):
         self.btn_inspect.setEnabled(True)
@@ -454,6 +466,23 @@ class MainWindow(QMainWindow):
         if self._is_downloading:
             return
 
+        # Check existing tracks to ensure current status reflects any files on disk
+        self.downloader.check_existing_tracks(self.current_playlist)
+        self.track_table.populate(self.current_playlist.tracks)
+
+        # Only download files that are not "Done", so undownloaded ones
+        undownloaded = [t for t in self.current_playlist.tracks if t.status != "Done"]
+        if not undownloaded:
+            QMessageBox.information(
+                self,
+                "All Tracks Downloaded",
+                f"All {self.current_playlist.track_count} tracks in '{self.current_playlist.title}' are already downloaded (status: Done).\n\n"
+                "There are no undownloaded tracks remaining to download.",
+            )
+            self.log_message(f"All {self.current_playlist.track_count} tracks in '{self.current_playlist.title}' are already downloaded. Nothing to download.")
+            self.progress_card.set_status("All tracks already downloaded.")
+            return
+
         # Check ffmpeg requirement
         ffmpeg_ok, ffmpeg_err = verify_ffmpeg_requirement(self.config)
         if not ffmpeg_ok:
@@ -470,7 +499,22 @@ class MainWindow(QMainWindow):
         self.btn_cancel.setEnabled(True)
         self.progress_card.reset()
 
-        self.log_message(f"Starting download of '{self.current_playlist.title}' ({self.current_playlist.track_count} tracks)...")
+        already_done = len(self.current_playlist.tracks) - len(undownloaded)
+        if already_done > 0:
+            init_pct = (already_done / self.current_playlist.track_count) * 100.0
+            self.progress_card.update_overall(
+                completed=already_done,
+                total=self.current_playlist.track_count,
+                percent=init_pct,
+            )
+            self.log_message(
+                f"Starting download of {len(undownloaded)} undownloaded tracks "
+                f"({already_done}/{self.current_playlist.track_count} already completed)..."
+            )
+        else:
+            self.log_message(
+                f"Starting download of '{self.current_playlist.title}' ({self.current_playlist.track_count} tracks)..."
+            )
 
         self.download_worker = DownloadWorker(self.downloader, self.current_playlist)
         self.download_worker.track_update_signal.connect(self.track_table.update_track)

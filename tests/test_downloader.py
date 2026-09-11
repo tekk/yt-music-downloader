@@ -302,3 +302,158 @@ def test_fetch_info_uses_clean_artist_and_title(monkeypatch):
     assert info.tracks[2].title == "One Kiss"
 
 
+def test_is_track_already_downloaded(tmp_path):
+    from yt_music_downloader.downloader import TrackInfo, is_track_already_downloaded
+
+    track = TrackInfo(index=1, artist="Daft Punk", title="Get Lucky")
+
+    # 1. Directory doesn't exist
+    assert is_track_already_downloaded(track, tmp_path / "nonexistent") is False
+
+    # 2. File doesn't exist yet
+    assert is_track_already_downloaded(track, tmp_path) is False
+
+    # 3. 0-byte file (incomplete)
+    zero_file = tmp_path / "Daft Punk - Get Lucky.mp3"
+    zero_file.touch()
+    assert is_track_already_downloaded(track, tmp_path, "mp3") is False
+
+    # 4. Valid non-empty file
+    zero_file.write_text("dummy audio data")
+    assert is_track_already_downloaded(track, tmp_path, "mp3") is True
+
+    # 5. Incomplete with active .part file
+    part_file = tmp_path / "Daft Punk - Get Lucky.mp3.part"
+    part_file.write_text("in progress")
+    assert is_track_already_downloaded(track, tmp_path, "mp3") is False
+    part_file.unlink()
+
+    # 6. Different valid audio extension (e.g. .m4a or .flac)
+    zero_file.unlink()
+    flac_file = tmp_path / "Daft Punk - Get Lucky.flac"
+    flac_file.write_text("dummy flac data")
+    assert is_track_already_downloaded(track, tmp_path) is True
+
+
+def test_check_existing_tracks_marking(tmp_path):
+    from yt_music_downloader.config import AppConfig
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo, YTMusicDownloader
+
+    cfg = AppConfig(download_dir=str(tmp_path), auto_create_playlist_folder=False)
+    downloader = YTMusicDownloader(cfg)
+
+    # Pre-create file for track 1
+    (tmp_path / "Artist 1 - Song 1.mp3").write_text("audio")
+
+    playlist = PlaylistInfo(
+        title="Test Playlist",
+        author="Curator",
+        url="https://music.youtube.com/playlist?list=PL1",
+        is_playlist=True,
+        track_count=2,
+        tracks=[
+            TrackInfo(index=1, artist="Artist 1", title="Song 1"),
+            TrackInfo(index=2, artist="Artist 2", title="Song 2"),
+        ],
+    )
+
+    count = downloader.check_existing_tracks(playlist)
+    assert count == 1
+    assert playlist.tracks[0].status == "Done"
+    assert playlist.tracks[0].percent == 100.0
+    assert playlist.tracks[1].status == "Pending"
+
+
+def test_download_playlist_skips_done_tracks(tmp_path, monkeypatch):
+    from yt_music_downloader.config import AppConfig
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo, YTMusicDownloader
+
+    cfg = AppConfig(download_dir=str(tmp_path), auto_create_playlist_folder=False)
+    downloader = YTMusicDownloader(cfg)
+
+    # Track 1 is already Done; Track 2 is Pending
+    t1 = TrackInfo(index=1, artist="Artist 1", title="Song 1", status="Done", percent=100.0, url="https://yt.com/1")
+    t2 = TrackInfo(index=2, artist="Artist 2", title="Song 2", status="Pending", percent=0.0, url="https://yt.com/2")
+
+    playlist = PlaylistInfo(
+        title="Test Playlist",
+        author="Curator",
+        url="https://music.youtube.com/playlist?list=PL1",
+        is_playlist=True,
+        track_count=2,
+        tracks=[t1, t2],
+    )
+
+    downloaded_urls = []
+
+    class MockYDL:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def add_post_processor(self, *args, **kwargs):
+            pass
+        def download(self, urls):
+            downloaded_urls.extend(urls)
+
+    monkeypatch.setattr("yt_dlp.YoutubeDL", MockYDL)
+    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ffmpeg")
+
+    logs = []
+    downloader.download_playlist(
+        playlist=playlist,
+        on_track_update=lambda t: None,
+        on_progress_update=lambda p: None,
+        on_log=lambda m: logs.append(m),
+    )
+
+    # Verify Track 1 was skipped and only Track 2 was downloaded
+    assert downloaded_urls == ["https://yt.com/2"]
+    assert t1.status == "Done"
+    assert t2.status == "Done"
+    assert any("Skipping already completed: Artist 1 - Song 1" in m for m in logs)
+
+
+def test_download_playlist_all_done_returns_immediately(tmp_path, monkeypatch):
+    from yt_music_downloader.config import AppConfig
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo, YTMusicDownloader
+
+    cfg = AppConfig(download_dir=str(tmp_path), auto_create_playlist_folder=False)
+    downloader = YTMusicDownloader(cfg)
+
+    t1 = TrackInfo(index=1, artist="Artist 1", title="Song 1", status="Done", percent=100.0)
+    playlist = PlaylistInfo(
+        title="Test Playlist",
+        author="Curator",
+        url="https://music.youtube.com/playlist?list=PL1",
+        is_playlist=True,
+        track_count=1,
+        tracks=[t1],
+    )
+
+    download_called = False
+
+    class MockYDL:
+        def __init__(self, *args, **kwargs):
+            pass
+        def download(self, urls):
+            nonlocal download_called
+            download_called = True
+
+    monkeypatch.setattr("yt_dlp.YoutubeDL", MockYDL)
+    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/ffmpeg")
+
+    logs = []
+    downloader.download_playlist(
+        playlist=playlist,
+        on_track_update=lambda t: None,
+        on_progress_update=lambda p: None,
+        on_log=lambda m: logs.append(m),
+    )
+
+    assert download_called is False
+    assert any("already downloaded" in m for m in logs)
+
+

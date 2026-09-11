@@ -356,4 +356,29 @@ async def test_app_start_download_missing_ffmpeg_blocks(tmp_path):
             assert app._is_downloading is False
 
 
+@pytest.mark.asyncio
+async def test_app_start_download_all_done_blocks(tmp_path):
+    """Verify download does not start when all tracks are already marked as Done."""
+    from unittest.mock import patch
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo
+
+    cfg = AppConfig(download_dir=str(tmp_path), audio_format="mp3")
+    app = YTMusicDownloaderApp(config=cfg)
+    app.current_playlist = PlaylistInfo(
+        title="Test All Done",
+        author="Tester",
+        url="https://music.youtube.com/playlist?list=123",
+        is_playlist=True,
+        track_count=1,
+        tracks=[TrackInfo(index=1, title="Track 1", artist="Artist 1", url="https://yt.com/1", status="Done", percent=100.0)],
+    )
+
+    with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+        async with app.run_test() as pilot:
+            await pilot.press("d")
+            await pilot.pause()
+            # Download should NOT start
+            assert app._is_downloading is False
+
+
 
