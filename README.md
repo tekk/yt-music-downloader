@@ -1,4 +1,4 @@
-# 🎵 YouTube Music Downloader
+# YouTube Music Downloader
 
 [![hovnokod](https://raw.githubusercontent.com/tekk/hovnokod-badge/main/assets/badges/hovnokod-flat.svg)](https://github.com/tekk/hovnokod-badge)
 
