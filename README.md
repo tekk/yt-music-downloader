@@ -1,5 +1,7 @@
 # 🎵 YouTube Music Downloader TUI
 
+[![hovnokod](https://raw.githubusercontent.com/tekk/hovnokod-badge/main/assets/badges/hovnokod-flat.svg)](https://github.com/tekk/hovnokod-badge)
+
 A cross-platform Terminal User Interface (TUI) application for **macOS**, **Windows**, and **Linux** designed to download YouTube Music playlists and tracks with the highest possible audio quality, supporting browser-based authentication, cookie extraction, and audio re-encoding.
 
 ![YouTube Music Downloader](img/screenshot.png)
