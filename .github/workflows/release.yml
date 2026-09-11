@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Pre-release Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -v
+
+  build-python:
+    name: Build Python Wheel & Sdist
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Upload Python artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-python
+          path: dist/*
+
+  build-windows-x64:
+    name: Build Windows x64
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller -e .
+
+      - name: Build standalone executables
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name yt-music-gui --collect-all yt_music_downloader gui_main.py
+          pyinstaller --noconfirm --onefile --console --name yt-music-dl --collect-all yt_music_downloader main.py
+
+      - name: Create release zip
+        shell: pwsh
+        run: |
+          mkdir release-win
+          Copy-Item dist\yt-music-gui.exe release-win\
+          Copy-Item dist\yt-music-dl.exe release-win\
+          Copy-Item README.md release-win\
+          Compress-Archive -Path release-win\* -DestinationPath yt-music-downloader-${{ github.ref_name }}-windows-x64.zip
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-x64
+          path: yt-music-downloader-${{ github.ref_name }}-windows-x64.zip
+
+  build-windows-arm64:
+    name: Build Windows ARM64
+    needs: test
+    runs-on: windows-11-arm
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller -e .
+
+      - name: Build standalone executables
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name yt-music-gui --collect-all yt_music_downloader gui_main.py
+          pyinstaller --noconfirm --onefile --console --name yt-music-dl --collect-all yt_music_downloader main.py
+
+      - name: Create release zip
+        shell: pwsh
+        run: |
+          mkdir release-win-arm
+          Copy-Item dist\yt-music-gui.exe release-win-arm\
+          Copy-Item dist\yt-music-dl.exe release-win-arm\
+          Copy-Item README.md release-win-arm\
+          Compress-Archive -Path release-win-arm\* -DestinationPath yt-music-downloader-${{ github.ref_name }}-windows-arm64.zip
+
+      - name: Upload Windows ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-arm64
+          path: yt-music-downloader-${{ github.ref_name }}-windows-arm64.zip
+
+  build-linux-binaries:
+    name: Build Linux Binaries, AppImage & Debian Package
+    needs: test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 file
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller -e .
+
+      - name: Build standalone Linux executables
+        run: |
+          pyinstaller --noconfirm --onedir --name yt-music-gui --collect-all yt_music_downloader gui_main.py
+          pyinstaller --noconfirm --onefile --name yt-music-dl --collect-all yt_music_downloader main.py
+          # Copy standalone binary into dist/bin
+          mkdir -p dist/bin
+          cp -r dist/yt-music-gui/* dist/bin/
+          cp dist/yt-music-dl dist/bin/
+
+      - name: Build AppImage
+        run: |
+          chmod +x packaging/build_appimage.sh
+          ./packaging/build_appimage.sh "${{ github.ref_name }}" dist dist/bin
+
+      - name: Build Debian .deb Package
+        run: |
+          chmod +x packaging/build_deb.sh
+          ./packaging/build_deb.sh "${{ github.ref_name }}" dist dist/bin
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-python, build-windows-x64, build-windows-arm64, build-linux-binaries]
+    runs-on: ubuntu-latest
+    if: always() && needs.test.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List downloaded assets
+        run: ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

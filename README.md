@@ -53,21 +53,40 @@ A cross-platform Terminal User Interface (TUI) application for **macOS**, **Wind
   - **Linux (Arch)**: `sudo pacman -S ffmpeg`
   - **Windows**: `winget install Gyan.FFmpeg` or `choco install ffmpeg`
 
-### Install the Application
+### Install via pipx (Recommended)
+`pipx` runs the app in an isolated environment and adds `yt-music-dl` and `yt-music-gui` to your PATH:
 
-Clone the repository and install dependencies:
+```bash
+pipx install yt-music-downloader
+# Or install directly from GitHub:
+pipx install git+https://github.com/tekk/yt-music-downloader.git
+```
+
+### Install via uv
+```bash
+uv tool install yt-music-downloader
+# Or directly from GitHub:
+uv tool install git+https://github.com/tekk/yt-music-downloader.git
+```
+
+### Standalone Precompiled Binaries
+Check the [Latest Releases](https://github.com/tekk/yt-music-downloader/releases) for:
+- **Windows x64 / ARM64**: `.zip` with portable `.exe`
+- **Linux**: Standalone `.AppImage` (runs on any modern distro)
+- **Debian / Ubuntu**: Native `.deb` package
+
+### Install from Source
 
 ```bash
 git clone https://github.com/tekk/yt-music-downloader.git
 cd yt-music-downloader
 
 # Using uv (recommended)
-uv venv
-uv pip install -e .
+uv venv && uv pip install -e .
 
 # Or using standard venv + pip
 python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 

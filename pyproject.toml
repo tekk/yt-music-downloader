@@ -4,11 +4,41 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yt-music-downloader"
-version = "1.0.0"
-description = "Cross-platform TUI application to download YouTube Music playlists with highest audio quality, browser authentication, and MP3/M4A re-encoding."
+version = "0.0.2"
+description = "Cross-platform TUI and Desktop GUI application to download YouTube Music playlists with highest audio quality, browser authentication, and MP3/M4A re-encoding."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [
+    { name = "Peter Javorsky", email = "tekk.sk@gmail.com" }
+]
+keywords = [
+    "youtube-music",
+    "downloader",
+    "music-downloader",
+    "tui",
+    "gui",
+    "pyqt6",
+    "textual",
+    "mp3",
+    "m4a",
+    "flac",
+    "audio",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio",
+]
 dependencies = [
     "textual>=8.0.0",
     "yt-dlp>=2025.1.0",
@@ -29,6 +59,15 @@ dev = [
 yt-music-dl = "yt_music_downloader.cli:main"
 yt-music-gui = "yt_music_downloader.gui.app:main"
 
+[project.urls]
+Homepage = "https://github.com/tekk/yt-music-downloader"
+Repository = "https://github.com/tekk/yt-music-downloader"
+Issues = "https://github.com/tekk/yt-music-downloader/issues"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["yt_music_downloader*"]
+
+[tool.setuptools.package-data]
+"yt_music_downloader.ui" = ["*.tcss"]
+"yt_music_downloader.gui" = ["fonts/*.ttf"]

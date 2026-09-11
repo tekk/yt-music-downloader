@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=YouTube Music Downloader
+GenericName=Music Downloader
+Comment=Download YouTube Music playlists and tracks with highest audio quality
+Exec=yt-music-gui %U
+Terminal=false
+Type=Application
+Icon=yt-music-downloader
+Categories=AudioVideo;Audio;Network;
+Keywords=youtube;music;download;mp3;audio;flac;
+StartupWMClass=yt-music-downloader
+MimeType=x-scheme-handler/https;
+Actions=TUI;
+
+[Desktop Action TUI]
+Name=Open in Terminal (TUI)
+Exec=x-terminal-emulator -e yt-music-dl
