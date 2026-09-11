@@ -42,10 +42,14 @@ class TrackTableWidget(QTableWidget):
 
         self._track_rows: Dict[int, int] = {}  # track.index -> row
 
-    def populate(self, tracks: List[TrackInfo]) -> None:
-        """Clear and populate table with new tracks list."""
+    def clear_tracks(self) -> None:
+        """Clear all rows and reset tracking indices."""
         self.setRowCount(0)
         self._track_rows.clear()
+
+    def populate(self, tracks: List[TrackInfo]) -> None:
+        """Clear and populate table with new tracks list."""
+        self.clear_tracks()
 
         mono_font = QFont("JetBrains Mono", 11)
         body_font = QFont("Roboto", 12)

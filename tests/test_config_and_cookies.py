@@ -226,3 +226,45 @@ def test_extract_from_installed_browser_filtering(tmp_path, monkeypatch):
     content = out_file.read_text(encoding="utf-8")
     assert ".otherbank.com" not in content
     assert ".youtube.com" in content
+
+
+def test_has_cookies_status(tmp_path):
+    cookie_path = tmp_path / "test_cookies.txt"
+    cfg = AppConfig(cookies_path=str(cookie_path))
+
+    # File does not exist
+    assert not cfg.has_cookies()
+
+    # Empty file
+    cookie_path.write_text("", encoding="utf-8")
+    assert not cfg.has_cookies()
+
+    # Non-empty file
+    cookie_path.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    assert cfg.has_cookies()
+
+
+def test_config_load_invalid_json(tmp_path):
+    cfg_file = tmp_path / "corrupted_config.json"
+    cfg_file.write_text("NOT VALID JSON! {", encoding="utf-8")
+
+    AppConfig.config_file_path = classmethod(lambda cls: cfg_file)
+    cfg = AppConfig.load()
+    # Falls back to default config without crashing
+    assert cfg.audio_format == "mp3"
+    assert cfg.mp3_quality == "320"
+
+
+def test_get_default_music_dir_fallback(monkeypatch):
+    import platformdirs
+    monkeypatch.setattr(platformdirs, "user_music_dir", lambda: (_ for _ in ()).throw(RuntimeError("OS error")))
+    music_dir = get_default_music_dir()
+    assert "YT-Music" in str(music_dir)
+
+
+def test_get_browser_profile_dir():
+    from yt_music_downloader.config import get_browser_profile_dir
+    p = get_browser_profile_dir()
+    assert p.is_dir()
+    assert "browser_profile" in str(p)
+

@@ -40,8 +40,8 @@ uv build
 python -m build
 ```
 This produces:
-- `dist/yt_music_downloader-0.0.2.tar.gz`
-- `dist/yt_music_downloader-0.0.2-py3-none-any.whl`
+- `dist/yt_music_downloader-0.0.3.tar.gz`
+- `dist/yt_music_downloader-0.0.3-py3-none-any.whl`
 
 #### 3. Upload to PyPI
 ```bash
@@ -147,14 +147,14 @@ pip install git+https://github.com/tekk/yt-music-downloader.git
 
 ## 💽 5. Standalone Precompiled Binaries (No Python Needed)
 
-Every time you push a `v*` tag (e.g. `v0.0.2`), the GitHub Actions release workflow compiles standalone binaries attached to the GitHub Release:
+Every time you push a `v*` tag (e.g. `v0.0.3`), the GitHub Actions release workflow compiles standalone binaries attached to the GitHub Release:
 
 1. **Windows x64 / ARM64**:
-   - Download `yt-music-downloader-v0.0.2-windows-x64.zip`.
+   - Download `yt-music-downloader-v0.0.3-windows-x64.zip` (or arm64).
    - Extract and double-click `yt-music-gui.exe` (or run `yt-music-dl.exe` in PowerShell / Windows Terminal).
 
 2. **Linux AppImage**:
-   - Download `yt-music-downloader-v0.0.2-linux-x86_64.AppImage`.
+   - Download `yt-music-downloader-v0.0.3-linux-x86_64.AppImage`.
    - Make executable and run:
      ```bash
      chmod +x yt-music-downloader-*-linux-x86_64.AppImage
@@ -162,7 +162,7 @@ Every time you push a `v*` tag (e.g. `v0.0.2`), the GitHub Actions release workf
      ```
 
 3. **Debian / Ubuntu (.deb)**:
-   - Download `yt-music-downloader_0.0.2_amd64.deb`.
+   - Download `yt-music-downloader_0.0.3_amd64.deb`.
    - Install with:
      ```bash
      sudo dpkg -i yt-music-downloader_*_amd64.deb

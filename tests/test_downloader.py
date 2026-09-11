@@ -140,3 +140,165 @@ def test_fetch_user_playlists_parsing(tmp_path, monkeypatch):
     assert playlists[2].id == "PL456"
     assert playlists[2].track_count == 10
 
+
+def test_sanitize_filename_component():
+    from yt_music_downloader.downloader import sanitize_filename_component
+
+    assert sanitize_filename_component("AC/DC") == "AC-DC"
+    assert sanitize_filename_component("What Is Love?") == "What Is Love"
+    assert sanitize_filename_component('Artist: "Song" <Live>') == "Artist Song Live"
+    assert sanitize_filename_component("  Multiple   Spaces  ") == "Multiple Spaces"
+    assert sanitize_filename_component("...Leading and Trailing...") == "Leading and Trailing"
+    assert sanitize_filename_component("") == "Unknown"
+
+
+def test_extract_artist_and_title_multi_artists():
+    from yt_music_downloader.downloader import extract_artist_and_title
+
+    info = {
+        "artists": ["Daft Punk", "Pharrell Williams"],
+        "track": "Get Lucky",
+        "title": "Get Lucky (Official Audio)",
+    }
+    artist, title = extract_artist_and_title(info)
+    assert artist == "Daft Punk, Pharrell Williams"
+    assert title == "Get Lucky"
+
+
+def test_extract_artist_and_title_creators_and_duplicate_prefix():
+    from yt_music_downloader.downloader import extract_artist_and_title
+
+    info = {
+        "creators": ["Shakira", "Burna Boy", "FIFA"],
+        "title": "Shakira, Burna Boy - Dai Dai (Official Video)",
+        "uploader": "Shakira",
+    }
+    artist, title = extract_artist_and_title(info)
+    assert artist == "Shakira, Burna Boy, FIFA"
+    assert title == "Dai Dai (Official Video)"
+
+
+def test_extract_artist_and_title_topic_channel():
+    from yt_music_downloader.downloader import extract_artist_and_title
+
+    info = {
+        "channel": "Rick Astley - Topic",
+        "title": "Never Gonna Give You Up",
+    }
+    artist, title = extract_artist_and_title(info)
+    assert artist == "Rick Astley"
+    assert title == "Never Gonna Give You Up"
+
+
+def test_extract_artist_and_title_split_title():
+    from yt_music_downloader.downloader import extract_artist_and_title
+
+    # Title with standard hyphen
+    info1 = {
+        "uploader": "Music Channel",
+        "title": "Queen - Bohemian Rhapsody",
+    }
+    artist1, title1 = extract_artist_and_title(info1)
+    assert artist1 == "Queen"
+    assert title1 == "Bohemian Rhapsody"
+
+    # Title with en-dash
+    info2 = {
+        "uploader": "Music Channel",
+        "title": "Linkin Park – In The End",
+    }
+    artist2, title2 = extract_artist_and_title(info2)
+    assert artist2 == "Linkin Park"
+    assert title2 == "In The End"
+
+
+def test_clean_metadata_pp_and_filename_template():
+    import yt_dlp
+    from yt_music_downloader.downloader import CleanMetadataPP, SONG_FILENAME_TEMPLATE
+
+    ydl = yt_dlp.YoutubeDL({"outtmpl": SONG_FILENAME_TEMPLATE, "simulate": True})
+
+    discovered = []
+    pp = CleanMetadataPP(
+        ydl,
+        default_artist="Coldplay",
+        default_title="Yellow",
+        on_metadata_discovered=lambda a, t: discovered.append((a, t)),
+    )
+    ydl.add_post_processor(pp, when="pre_process")
+
+    info = {
+        "id": "vid123",
+        "artists": ["Coldplay", "BTS"],
+        "track": "My Universe",
+        "title": "Coldplay, BTS - My Universe (Official Music Video)",
+        "formats": [{"format_id": "1", "url": "https://example.com/audio.mp3", "ext": "mp3"}],
+        "extractor": "generic",
+    }
+    res = ydl.process_ie_result(info, download=False)
+    filename = ydl.prepare_filename(res)
+
+    assert filename == "Coldplay, BTS - My Universe.mp3"
+    assert res.get("artist") == "Coldplay, BTS"
+    assert res.get("track") == "My Universe"
+    assert len(discovered) == 1
+    assert discovered[0] == ("Coldplay, BTS", "My Universe")
+
+
+def test_fetch_info_uses_clean_artist_and_title(monkeypatch):
+    cfg = AppConfig()
+    downloader = YTMusicDownloader(cfg)
+
+    mock_playlist = {
+        "_type": "playlist",
+        "title": "Sample Playlist",
+        "uploader": "Curator",
+        "entries": [
+            {
+                "id": "track1",
+                "artists": ["Daft Punk"],
+                "track": "One More Time",
+                "title": "Daft Punk - One More Time",
+                "duration": 320,
+            },
+            {
+                "id": "track2",
+                "channel": "Rick Astley - Topic",
+                "title": "Never Gonna Give You Up",
+                "duration": 213,
+            },
+            {
+                "id": "track3",
+                "title": "Calvin Harris ft. Dua Lipa - One Kiss",
+                "uploader": "CalvinHarrisVEVO",
+                "duration": 214,
+            },
+        ],
+    }
+
+    class MockYDL:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download=False):
+            return mock_playlist
+
+    monkeypatch.setattr("yt_dlp.YoutubeDL", MockYDL)
+
+    info = downloader.fetch_info("https://music.youtube.com/playlist?list=PLtest")
+    assert info.is_playlist is True
+    assert len(info.tracks) == 3
+
+    assert info.tracks[0].artist == "Daft Punk"
+    assert info.tracks[0].title == "One More Time"
+
+    assert info.tracks[1].artist == "Rick Astley"
+    assert info.tracks[1].title == "Never Gonna Give You Up"
+
+    assert info.tracks[2].artist == "Calvin Harris ft. Dua Lipa"
+    assert info.tracks[2].title == "One Kiss"
+
+

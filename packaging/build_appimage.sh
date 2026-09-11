@@ -4,7 +4,7 @@ set -euo pipefail
 # Build Linux .AppImage package for yt-music-downloader
 # Usage: ./packaging/build_appimage.sh <version> <output_dir> [binary_dir]
 
-VERSION="${1:-0.0.2}"
+VERSION="${1:-0.0.3}"
 OUTPUT_DIR="${2:-dist}"
 BINARY_DIR="${3:-dist/bin}"
 

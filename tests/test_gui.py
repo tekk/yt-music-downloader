@@ -8,7 +8,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PyQt6.QtWidgets import QApplication
 from yt_music_downloader.config import AppConfig
-from yt_music_downloader.downloader import TrackInfo, UserPlaylistSummary
+from yt_music_downloader.downloader import PlaylistInfo, TrackInfo, UserPlaylistSummary
 from yt_music_downloader.gui.app import MainWindow
 from yt_music_downloader.gui.dialogs.auth_dialog import AuthDialog
 from yt_music_downloader.gui.dialogs.playlists_dialog import PlaylistsDialog
@@ -192,4 +192,58 @@ def test_main_window_dependencies_button_and_banner(qapp, tmp_path):
         win_missing = MainWindow(config=cfg)
         assert win_missing.banner_ffmpeg.isHidden() is False
         win_missing.close()
+
+
+def test_progress_card_widget_reset(qapp):
+    card = ProgressCardWidget()
+    card.update_track(percent=50.0, downloaded=1000, total=2000, speed=500, eta=2)
+    card.update_overall(completed=1, total=2, percent=50.0)
+    assert card.track_bar.value() == 50
+
+    card.reset()
+    assert card.track_bar.value() == 0
+    assert card.overall_bar.value() == 0
+    assert "Ready" in card.lbl_status.text()
+
+
+def test_track_table_widget_clear(qapp):
+    table = TrackTableWidget()
+    tracks = [
+        TrackInfo(index=1, title="Song 1", artist="Artist 1", duration=180),
+    ]
+    table.populate(tracks)
+    assert table.rowCount() == 1
+
+    table.clear_tracks()
+    assert table.rowCount() == 0
+
+
+def test_main_window_log_and_ui_states(qapp, tmp_path):
+    cfg = AppConfig(download_dir=str(tmp_path))
+    win = MainWindow(config=cfg)
+
+    # Test log appending
+    win.log_message("Test log entry")
+    assert "Test log entry" in win.log_console.toPlainText()
+
+    # Test inspect success UI updates
+    info = PlaylistInfo(
+        title="My Playlist",
+        author="Artist",
+        url="https://music.youtube.com/playlist?list=123",
+        is_playlist=True,
+        track_count=1,
+        tracks=[TrackInfo(index=1, title="Song 1", artist="Artist 1", duration=100)],
+    )
+    win._on_inspect_success(info)
+    assert win.current_playlist == info
+    assert win.track_table.rowCount() == 1
+    assert "Loaded 'My Playlist'" in win.progress_card.lbl_status.text()
+
+    # Test inspect error UI updates
+    win._on_inspect_error("Failed to connect")
+    assert "Failed to connect" in win.progress_card.lbl_status.text()
+
+    win.close()
+
 

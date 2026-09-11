@@ -5,17 +5,134 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import yt_dlp
+from yt_dlp.postprocessor import PostProcessor
 
 from .config import AppConfig
 from .dependencies import verify_ffmpeg_requirement
 
 logger = logging.getLogger(__name__)
+
+# Template for naming songs: {Artist name(s)} - {Track title}.%(ext)s
+SONG_FILENAME_TEMPLATE = "%(clean_artist,artists,artist,creator,uploader,channel)l - %(clean_title,track,title)s.%(ext)s"
+
+
+def sanitize_filename_component(name: str) -> str:
+    """Sanitize a filename component, removing illegal filesystem characters."""
+    clean = name.replace("/", "-").replace("\\", "-")
+    clean = re.sub(r'[<>:"|?*\x00-\x1f]', "", clean)
+    clean = re.sub(r"\s+", " ", clean)
+    clean = re.sub(r"-+", "-", clean)
+    clean = clean.strip(" .-")
+    return clean or "Unknown"
+
+
+def extract_artist_and_title(
+    info: Dict[str, Any],
+    fallback_artist: str = "Unknown Artist",
+    fallback_title: str = "Unknown Title",
+) -> Tuple[str, str]:
+    """Extract and format '{Artist name(s)}' and '{Track title}' from media metadata.
+
+    Handles multi-artist lists, creators, YouTube Music topic channels, VEVO tags,
+    and splits titles formatted as 'Artist - Title' while preventing duplicated artist prefixes.
+    """
+    raw_artists: Optional[List[str]] = None
+    if info.get("artists") and isinstance(info["artists"], list):
+        raw_artists = [str(a).strip() for a in info["artists"] if str(a).strip()]
+    elif info.get("creators") and isinstance(info["creators"], list):
+        raw_artists = [str(c).strip() for c in info["creators"] if str(c).strip()]
+    elif info.get("artist"):
+        raw_artists = [str(info["artist"]).strip()]
+    elif info.get("creator"):
+        raw_artists = [str(info["creator"]).strip()]
+
+    channel = str(info.get("channel") or info.get("uploader") or fallback_artist).strip()
+    if channel.lower().endswith(" - topic"):
+        channel = channel[:-8].strip()
+    elif channel.lower().endswith("vevo") and len(channel) > 4:
+        channel = channel[:-4].strip() or channel
+
+    raw_title = str(info.get("track") or info.get("alt_title") or info.get("title") or fallback_title).strip()
+    sep_pattern = re.compile(r"\s+[\-–—:]\s+")
+
+    has_sep = sep_pattern.search(raw_title)
+    if has_sep:
+        parts = sep_pattern.split(raw_title, 1)
+        left, right = parts[0].strip(), parts[1].strip()
+    else:
+        left, right = None, raw_title
+
+    if raw_artists:
+        artist_str = ", ".join(raw_artists)
+        if has_sep and left and (
+            any(a.lower() in left.lower() or left.lower() in a.lower() for a in raw_artists)
+            or (channel and channel.lower() in left.lower())
+        ):
+            title_str = right
+        else:
+            title_str = raw_title
+            for a in [artist_str] + raw_artists:
+                if a:
+                    prefix_pat = re.compile(r"^" + re.escape(a) + r"\s*[\-–—:]\s*", re.IGNORECASE)
+                    if prefix_pat.search(title_str):
+                        title_str = prefix_pat.sub("", title_str).strip()
+                        break
+    elif has_sep and left:
+        artist_str = left
+        title_str = right
+    else:
+        artist_str = channel or fallback_artist
+        title_str = raw_title
+
+    if not artist_str:
+        artist_str = channel or fallback_artist or "Unknown Artist"
+    if not title_str:
+        title_str = raw_title or fallback_title or "Unknown Title"
+
+    clean_artist = sanitize_filename_component(artist_str)
+    clean_title = sanitize_filename_component(title_str)
+    return clean_artist, clean_title
+
+
+class CleanMetadataPP(PostProcessor):
+    """PostProcessor that sanitizes artist and title metadata before filename formatting and tagging."""
+
+    def __init__(
+        self,
+        downloader: Any = None,
+        default_artist: str = "Unknown Artist",
+        default_title: str = "Unknown Title",
+        on_metadata_discovered: Optional[Callable[[str, str], None]] = None,
+    ):
+        super().__init__(downloader)
+        self.default_artist = default_artist
+        self.default_title = default_title
+        self.on_metadata_discovered = on_metadata_discovered
+
+    def run(self, info: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
+        artist, title = extract_artist_and_title(
+            info,
+            fallback_artist=self.default_artist,
+            fallback_title=self.default_title,
+        )
+        info["clean_artist"] = artist
+        info["clean_title"] = title
+        info["artist"] = artist
+        info["track"] = title
+        info["title"] = title
+        if self.on_metadata_discovered:
+            try:
+                self.on_metadata_discovered(artist, title)
+            except Exception:
+                pass
+        return [], info
 
 
 @dataclass
@@ -140,11 +257,16 @@ class YTMusicDownloader:
                 for idx, entry in enumerate(raw_entries, start=1):
                     if not entry:
                         continue
+                    artist, title = extract_artist_and_title(
+                        entry,
+                        fallback_artist=info.get("uploader") or info.get("channel") or "Unknown Artist",
+                        fallback_title=f"Track {idx}",
+                    )
                     tracks.append(
                         TrackInfo(
                             index=idx,
-                            title=entry.get("title") or f"Track {idx}",
-                            artist=entry.get("uploader") or entry.get("channel") or info.get("uploader") or "Unknown",
+                            title=title or f"Track {idx}",
+                            artist=artist or "Unknown Artist",
                             duration=int(entry.get("duration") or 0),
                             url=entry.get("url") or f"https://music.youtube.com/watch?v={entry.get('id', '')}",
                             id=entry.get("id") or "",
@@ -160,10 +282,15 @@ class YTMusicDownloader:
                     thumbnail_url=info.get("thumbnail") or "",
                 )
             else:
+                artist, title = extract_artist_and_title(
+                    info,
+                    fallback_artist="Unknown Artist",
+                    fallback_title="Unknown Title",
+                )
                 track = TrackInfo(
                     index=1,
-                    title=info.get("title") or "Unknown Title",
-                    artist=info.get("uploader") or info.get("channel") or "Unknown Artist",
+                    title=title or "Unknown Title",
+                    artist=artist or "Unknown Artist",
                     duration=int(info.get("duration") or 0),
                     url=url,
                     id=info.get("id") or "",
@@ -358,10 +485,7 @@ class YTMusicDownloader:
             on_track_update(track)
             on_log(f"[{i}/{total_tracks}] Starting: {track.artist} - {track.title}")
 
-            if playlist.is_playlist:
-                out_tmpl = str(target_folder / f"{track.index:02d} - %(title)s.%(ext)s")
-            else:
-                out_tmpl = str(target_folder / "%(title)s.%(ext)s")
+            out_tmpl = str(target_folder / SONG_FILENAME_TEMPLATE)
 
             def progress_hook(d: Dict[str, Any]):
                 if self._cancel_requested:
@@ -441,6 +565,18 @@ class YTMusicDownloader:
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    def on_meta_discovered(discovered_artist: str, discovered_title: str):
+                        track.artist = discovered_artist
+                        track.title = discovered_title
+                        on_track_update(track)
+
+                    clean_pp = CleanMetadataPP(
+                        ydl,
+                        default_artist=track.artist,
+                        default_title=track.title,
+                        on_metadata_discovered=on_meta_discovered,
+                    )
+                    ydl.add_post_processor(clean_pp, when="pre_process")
                     self._active_ydl = ydl
                     ydl.download([track.url])
 
