@@ -247,3 +247,24 @@ def test_main_window_log_and_ui_states(qapp, tmp_path):
     win.close()
 
 
+def test_app_icon_loading(qapp):
+    """Verify get_app_icon loads a valid, non-null QIcon and icon path exists."""
+    from yt_music_downloader.gui.styles import get_app_icon, get_app_icon_path
+
+    icon_path = get_app_icon_path()
+    assert icon_path.exists()
+
+    icon = get_app_icon()
+    assert not icon.isNull()
+    sizes = icon.availableSizes()
+    assert len(sizes) > 0
+
+
+def test_main_window_window_icon(qapp, tmp_path):
+    """Verify MainWindow has a valid window icon set upon initialization."""
+    cfg = AppConfig(download_dir=str(tmp_path))
+    win = MainWindow(config=cfg)
+    assert not win.windowIcon().isNull()
+    win.close()
+
+

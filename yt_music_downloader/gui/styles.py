@@ -6,11 +6,50 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFont, QFontDatabase, QIcon
 
 logger = logging.getLogger(__name__)
 
 FONTS_DIR = Path(__file__).parent / "fonts"
+ICONS_DIR = Path(__file__).parent / "icons"
+
+
+def get_app_icon_path() -> Path:
+    """Return the filesystem path to the main application icon PNG."""
+    main_icon = ICONS_DIR / "icon.png"
+    if main_icon.exists():
+        return main_icon
+    # Fallback to packaging or img directory if running from source tree
+    repo_icon = Path(__file__).resolve().parent.parent.parent / "packaging" / "yt-music-downloader.png"
+    if repo_icon.exists():
+        return repo_icon
+    return main_icon
+
+
+def get_app_icon() -> QIcon:
+    """Load and return the main application QIcon with all bundled resolutions."""
+    icon = QIcon()
+    if ICONS_DIR.exists():
+        # Add available resolution sizes for pixel-perfect rendering across display densities
+        for size in (16, 24, 32, 48, 64, 128, 256, 512):
+            size_path = ICONS_DIR / f"icon_{size}.png"
+            if size_path.exists():
+                icon.addFile(str(size_path))
+
+        # Also add master icon.png and icon.ico if present
+        main_png = ICONS_DIR / "icon.png"
+        if main_png.exists():
+            icon.addFile(str(main_png))
+        ico_path = ICONS_DIR / "icon.ico"
+        if ico_path.exists():
+            icon.addFile(str(ico_path))
+
+    if icon.isNull():
+        fallback = get_app_icon_path()
+        if fallback.exists():
+            icon = QIcon(str(fallback))
+
+    return icon
 
 
 def load_application_fonts() -> Dict[str, str]:

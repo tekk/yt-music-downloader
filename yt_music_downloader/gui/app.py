@@ -40,7 +40,7 @@ from .dialogs.auth_dialog import AuthDialog
 from .dialogs.dependencies_dialog import DependenciesDialog
 from .dialogs.playlists_dialog import PlaylistsDialog
 from .dialogs.settings_dialog import SettingsDialog
-from .styles import DARK_THEME_QSS, load_application_fonts
+from .styles import DARK_THEME_QSS, get_app_icon, load_application_fonts
 from .widgets.progress_card import ProgressCardWidget
 from .widgets.track_table import TrackTableWidget
 
@@ -103,6 +103,9 @@ class MainWindow(QMainWindow):
         self._is_downloading = False
 
         self.setWindowTitle("YouTube Music Downloader")
+        app_icon = get_app_icon()
+        if not app_icon.isNull():
+            self.setWindowIcon(app_icon)
         self.setMinimumSize(1000, 720)
         self.resize(1120, 780)
 
@@ -536,6 +539,14 @@ class MainWindow(QMainWindow):
 
 def main():
     """Launch the Desktop GUI Application."""
+    # Set Windows AppUserModelID so taskbar groups and shows icon properly
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("tekk.ytmusicdownloader.gui")
+        except Exception:
+            pass
+
     # High-DPI scaling configuration
     if hasattr(Qt.ApplicationAttribute, "AA_EnableHighDpiScaling"):
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
@@ -545,6 +556,13 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("YouTube Music Downloader")
     app.setOrganizationName("Tekk")
+    if hasattr(app, "setDesktopFileName"):
+        app.setDesktopFileName("yt-music-downloader")
+
+    # Load application icon across all windows and dialogs
+    app_icon = get_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
 
     # Load custom fonts: Montserrat, Roboto, JetBrains Mono
     load_application_fonts()
@@ -553,6 +571,8 @@ def main():
     app.setStyleSheet(DARK_THEME_QSS)
 
     window = MainWindow()
+    if not app_icon.isNull():
+        window.setWindowIcon(app_icon)
     window.show()
 
     sys.exit(app.exec())

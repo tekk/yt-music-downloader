@@ -86,8 +86,8 @@ jobs:
 
       - name: Build standalone executables
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name yt-music-gui --collect-all yt_music_downloader gui_main.py
-          pyinstaller --noconfirm --onefile --console --name yt-music-dl --collect-all yt_music_downloader main.py
+          pyinstaller --noconfirm --onefile --windowed --name yt-music-gui --icon packaging/icon.ico --collect-all yt_music_downloader gui_main.py
+          pyinstaller --noconfirm --onefile --console --name yt-music-dl --icon packaging/icon.ico --collect-all yt_music_downloader main.py
 
       - name: Create release zip
         shell: pwsh
@@ -126,8 +126,8 @@ jobs:
 
       - name: Build standalone executables
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name yt-music-gui --collect-all yt_music_downloader gui_main.py
-          pyinstaller --noconfirm --onefile --console --name yt-music-dl --collect-all yt_music_downloader main.py
+          pyinstaller --noconfirm --onefile --windowed --name yt-music-gui --icon packaging/icon.ico --collect-all yt_music_downloader gui_main.py
+          pyinstaller --noconfirm --onefile --console --name yt-music-dl --icon packaging/icon.ico --collect-all yt_music_downloader main.py
 
       - name: Create release zip
         shell: pwsh
@@ -170,8 +170,8 @@ jobs:
 
       - name: Build standalone Linux executables
         run: |
-          pyinstaller --noconfirm --onedir --name yt-music-gui --collect-all yt_music_downloader gui_main.py
-          pyinstaller --noconfirm --onefile --name yt-music-dl --collect-all yt_music_downloader main.py
+          pyinstaller --noconfirm --onedir --name yt-music-gui --icon packaging/yt-music-downloader.png --collect-all yt_music_downloader gui_main.py
+          pyinstaller --noconfirm --onefile --name yt-music-dl --icon packaging/yt-music-downloader.png --collect-all yt_music_downloader main.py
           # Copy standalone binary into dist/bin
           mkdir -p dist/bin
           cp -r dist/yt-music-gui/* dist/bin/
