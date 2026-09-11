@@ -34,6 +34,10 @@ A cross-platform Terminal User Interface (TUI) application for **macOS**, **Wind
   - **Overall Playlist Progress Bar**: Overall progress, completed track counter (e.g. `12 / 20 tracks`), and percentage.
   - **Live Tracklist Queue**: Interactive data table showing track number, title, artist, duration, and real-time status badges (`⏳ Pending`, `⬇ Downloading`, `🔄 Transcoding`, `✓ Done`, `✗ Error`).
   - **Activity Log**: Dedicated log console displaying real-time download and FFmpeg transcoding output.
+- **Automatic Dependency Verification**:
+  - Automatically verifies system dependencies (**FFmpeg**, **FFprobe**, and system browsers) on startup.
+  - Warns proactively with exact OS-tailored install commands before broken downloads occur.
+  - Dedicated CLI diagnostics command (`yt-music-dl --check-deps`) and Desktop GUI **🛠 Dependencies** viewer.
 
 ---
 
@@ -94,6 +98,9 @@ yt-music-dl -f mp3 -q 320
 
 # Specify download directory and custom theme
 yt-music-dl -o ~/Music/Albums -t textual-light
+
+# Check system dependencies (FFmpeg, FFprobe, browsers)
+yt-music-dl --check-deps
 
 # Show full help
 yt-music-dl --help

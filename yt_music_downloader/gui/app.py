@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from ..browser_auth import check_cookie_file
 from ..config import AppConfig
+from ..dependencies import check_ffmpeg, verify_ffmpeg_requirement
 from ..downloader import (
     DownloadProgressUpdate,
     PlaylistInfo,
@@ -36,6 +37,7 @@ from ..downloader import (
     YTMusicDownloader,
 )
 from .dialogs.auth_dialog import AuthDialog
+from .dialogs.dependencies_dialog import DependenciesDialog
 from .dialogs.playlists_dialog import PlaylistsDialog
 from .dialogs.settings_dialog import SettingsDialog
 from .styles import DARK_THEME_QSS, load_application_fonts
@@ -108,6 +110,12 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
         self.update_auth_badge()
 
+        # Check dependencies and update warning banner
+        ffmpeg_stat = check_ffmpeg()
+        self.banner_ffmpeg.setVisible(not ffmpeg_stat.available)
+        if not ffmpeg_stat.available:
+            self.log_message("⚠️ Warning: FFmpeg not detected in PATH. Audio conversion and metadata embedding require FFmpeg.")
+
         if initial_url:
             self.input_url.setText(initial_url)
             self.inspect_url()
@@ -134,11 +142,44 @@ class MainWindow(QMainWindow):
         self.btn_auth.clicked.connect(self.open_auth_dialog)
         header_layout.addWidget(self.btn_auth)
 
+        self.btn_deps = QPushButton("🛠 Dependencies")
+        self.btn_deps.setObjectName("btn-deps")
+        self.btn_deps.clicked.connect(self.open_dependencies_dialog)
+        header_layout.addWidget(self.btn_deps)
+
         self.btn_settings = QPushButton("⚙ Settings")
         self.btn_settings.clicked.connect(self.open_settings_dialog)
         header_layout.addWidget(self.btn_settings)
 
         main_layout.addLayout(header_layout)
+
+        # Warning banner for missing FFmpeg
+        self.banner_ffmpeg = QFrame()
+        self.banner_ffmpeg.setObjectName("card-frame")
+        self.banner_ffmpeg.setStyleSheet(
+            "background-color: #2D1A1E; border: 1px solid #FF5252; border-radius: 8px; padding: 4px 10px;"
+        )
+        banner_layout = QHBoxLayout(self.banner_ffmpeg)
+        banner_layout.setContentsMargins(8, 4, 8, 4)
+        banner_layout.setSpacing(10)
+
+        lbl_banner = QLabel("⚠️ FFmpeg is not installed. Audio conversion (MP3, M4A, etc.) and cover art embedding require FFmpeg.")
+        lbl_banner.setStyleSheet("color: #FF8A80; font-weight: bold;")
+        banner_layout.addWidget(lbl_banner)
+        banner_layout.addStretch()
+
+        btn_banner_guide = QPushButton("Install Guide")
+        btn_banner_guide.setStyleSheet("background-color: #FF5252; color: #FFFFFF; font-weight: bold; padding: 3px 8px;")
+        btn_banner_guide.clicked.connect(self.open_dependencies_dialog)
+        banner_layout.addWidget(btn_banner_guide)
+
+        btn_banner_close = QPushButton("✕")
+        btn_banner_close.setFixedWidth(28)
+        btn_banner_close.clicked.connect(lambda: self.banner_ffmpeg.setVisible(False))
+        banner_layout.addWidget(btn_banner_close)
+
+        main_layout.addWidget(self.banner_ffmpeg)
+        self.banner_ffmpeg.setVisible(False)
 
         # 2. Input Card (URL, Inspect, Liked Songs, My Playlists)
         input_card = QFrame()
@@ -392,6 +433,12 @@ class MainWindow(QMainWindow):
             self.btn_browse_dir.setText("📁 " + Path(self.config.download_dir).name)
             self.btn_browse_dir.setToolTip(f"Download Directory: {self.config.download_dir}")
 
+    def open_dependencies_dialog(self):
+        dialog = DependenciesDialog(self)
+        dialog.exec()
+        ffmpeg_stat = check_ffmpeg()
+        self.banner_ffmpeg.setVisible(not ffmpeg_stat.available)
+
     def start_download(self):
         if not self.current_playlist or not self.current_playlist.tracks:
             url = self.input_url.text().strip()
@@ -402,6 +449,17 @@ class MainWindow(QMainWindow):
             return
 
         if self._is_downloading:
+            return
+
+        # Check ffmpeg requirement
+        ffmpeg_ok, ffmpeg_err = verify_ffmpeg_requirement(self.config)
+        if not ffmpeg_ok:
+            QMessageBox.critical(
+                self,
+                "FFmpeg Required",
+                f"Cannot start download:\n\n{ffmpeg_err}",
+            )
+            self.log_message("Download blocked: FFmpeg is missing from PATH.")
             return
 
         self._is_downloading = True

@@ -50,6 +50,11 @@ def parse_args() -> argparse.Namespace:
         help="Launch modern Desktop GUI client instead of terminal TUI",
     )
     parser.add_argument(
+        "--check-deps",
+        action="store_true",
+        help="Check external system dependencies (FFmpeg, browsers) and exit",
+    )
+    parser.add_argument(
         "-v", "--version",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -59,6 +64,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    if args.check_deps:
+        from .dependencies import print_dependency_report
+        sys.exit(print_dependency_report())
+
+    # Check for critical dependencies
+    from .dependencies import check_ffmpeg
+    ffmpeg_stat = check_ffmpeg()
+    if not ffmpeg_stat.available:
+        print(
+            f"⚠️  WARNING: FFmpeg was not found in PATH!\n"
+            f"   Audio conversion (MP3, M4A, FLAC, Opus) and thumbnail embedding require FFmpeg.\n"
+            f"   Install instructions ({ffmpeg_stat.install_guide}):\n   {ffmpeg_stat.install_guide}\n",
+            file=sys.stderr,
+        )
+
     config = AppConfig.load()
 
     if args.format:

@@ -71,3 +71,20 @@ def test_downloader_mock_execution(tmp_path):
         assert tracks[0].status == "Done"
         assert tracks[1].status == "Done"
         assert len(logs) > 0
+
+
+def test_cli_parse_args_check_deps():
+    with patch.object(sys, "argv", ["yt-music-dl", "--check-deps"]):
+        args = parse_args()
+        assert args.check_deps is True
+
+
+def test_cli_main_check_deps_flow():
+    from yt_music_downloader.cli import main
+    with patch.object(sys, "argv", ["yt-music-dl", "--check-deps"]):
+        with patch("yt_music_downloader.dependencies.print_dependency_report", return_value=0) as mock_print:
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            assert mock_print.call_count == 1
+

@@ -317,3 +317,43 @@ async def test_progress_panel_compact_and_no_screen_scroll(tmp_path):
         assert app.screen.max_scroll_y == 0
 
 
+@pytest.mark.asyncio
+async def test_app_mount_missing_ffmpeg_warning(tmp_path):
+    """Verify warning notification and log when FFmpeg is not found."""
+    from unittest.mock import patch
+    cfg = AppConfig(download_dir=str(tmp_path))
+    app = YTMusicDownloaderApp(config=cfg)
+
+    with patch("shutil.which", return_value=None):
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            # Verify app started and notified without error
+            assert app.is_running
+
+
+@pytest.mark.asyncio
+async def test_app_start_download_missing_ffmpeg_blocks(tmp_path):
+    """Verify download is blocked when FFmpeg is required but missing."""
+    from unittest.mock import patch
+    from yt_music_downloader.downloader import PlaylistInfo, TrackInfo
+
+    cfg = AppConfig(download_dir=str(tmp_path), audio_format="mp3")
+    app = YTMusicDownloaderApp(config=cfg)
+    app.current_playlist = PlaylistInfo(
+        title="Test",
+        author="Tester",
+        url="https://music.youtube.com/playlist?list=123",
+        is_playlist=True,
+        track_count=1,
+        tracks=[TrackInfo(index=1, title="Track 1", artist="Artist 1", url="https://yt.com/1")],
+    )
+
+    with patch("shutil.which", return_value=None):
+        async with app.run_test() as pilot:
+            await pilot.press("d")
+            await pilot.pause()
+            # Download should NOT start
+            assert app._is_downloading is False
+
+
+

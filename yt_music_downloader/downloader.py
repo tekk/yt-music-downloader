@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 import yt_dlp
 
 from .config import AppConfig
+from .dependencies import verify_ffmpeg_requirement
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,11 @@ class DownloadProgressUpdate:
 
 class DownloadCancelled(Exception):
     """Raised when the user cancels the download."""
+    pass
+
+
+class DependencyError(Exception):
+    """Raised when a required system dependency (e.g. FFmpeg) is missing."""
     pass
 
 
@@ -319,6 +325,13 @@ class YTMusicDownloader:
     ) -> None:
         """Download playlist or individual tracks with progress feedback."""
         self.reset_cancel()
+
+        # Validate external dependencies before starting download operations
+        ffmpeg_ok, ffmpeg_err = verify_ffmpeg_requirement(self.config)
+        if not ffmpeg_ok:
+            on_log(f"[bold red]Dependency Error:[/bold red] {ffmpeg_err}")
+            raise DependencyError(ffmpeg_err)
+
         total_tracks = len(playlist.tracks)
         completed_count = 0
         dest_dir = Path(self.config.download_dir)

@@ -25,6 +25,7 @@ from textual.widgets import (
 
 from ..browser_auth import check_cookie_file
 from ..config import AppConfig
+from ..dependencies import check_ffmpeg, verify_ffmpeg_requirement
 from ..downloader import (
     DownloadProgressUpdate,
     PlaylistInfo,
@@ -72,6 +73,22 @@ class YTMusicDownloaderApp(App):
         """Apply theme and initial state on startup."""
         self.theme = self.config.theme or "textual-dark"
         self.update_auth_indicator()
+
+        # Check critical system dependencies
+        ffmpeg_stat = check_ffmpeg()
+        if not ffmpeg_stat.available:
+            self.notify(
+                "⚠️ FFmpeg not found! Audio re-encoding and artwork embedding will fail.",
+                title="Missing Dependency",
+                severity="warning",
+                timeout=10,
+            )
+            self.log_message(
+                f"[bold red]⚠️ System Dependency Warning:[/bold red] FFmpeg was not detected in PATH.\n"
+                f"Audio conversion (MP3, M4A, FLAC, Opus) and cover art require FFmpeg.\n"
+                f"[cyan]Install instructions:[/cyan]\n{ffmpeg_stat.install_guide}"
+            )
+
         if self.initial_url:
             input_widget = self.query_one("#url-input", Input)
             input_widget.value = self.initial_url
@@ -308,6 +325,13 @@ class YTMusicDownloaderApp(App):
             return
 
         if self._is_downloading:
+            return
+
+        # Check ffmpeg requirement before starting
+        ffmpeg_ok, ffmpeg_err = verify_ffmpeg_requirement(self.config)
+        if not ffmpeg_ok:
+            self.notify("Cannot download: FFmpeg missing!", title="Dependency Error", severity="error", timeout=6)
+            self.log_message(f"[bold red]Cannot start download:[/bold red] {ffmpeg_err}")
             return
 
         self._is_downloading = True

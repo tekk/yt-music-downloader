@@ -173,3 +173,23 @@ def test_main_window_shortcuts(qapp, tmp_path):
     win._handle_escape()  # should not crash
 
     win.close()
+
+
+def test_main_window_dependencies_button_and_banner(qapp, tmp_path):
+    """Test MainWindow dependencies button and missing banner visibility."""
+    from unittest.mock import patch
+    cfg = AppConfig(download_dir=str(tmp_path))
+
+    # 1. When ffmpeg is available
+    with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+        win = MainWindow(config=cfg)
+        assert hasattr(win, "btn_deps")
+        assert win.banner_ffmpeg.isHidden() is True
+        win.close()
+
+    # 2. When ffmpeg is missing
+    with patch("shutil.which", return_value=None):
+        win_missing = MainWindow(config=cfg)
+        assert win_missing.banner_ffmpeg.isHidden() is False
+        win_missing.close()
+
