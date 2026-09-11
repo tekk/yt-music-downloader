@@ -301,7 +301,14 @@ def print_dependency_report(
     Returns:
         0 if all required dependencies are met, 1 if any required dependencies are missing.
     """
-    console = console or Console()
+    if console is None:
+        if sys.platform == "win32":
+            try:
+                sys.stdout.reconfigure(encoding="utf-8")
+                sys.stderr.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+        console = Console(legacy_windows=False)
     report = report or check_all_dependencies()
 
     table = create_dependency_table(report)
