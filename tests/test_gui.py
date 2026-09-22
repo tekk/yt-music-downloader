@@ -105,6 +105,9 @@ def test_progress_card_widget(qapp):
     card.reset()
     assert card.track_bar.value() == 0
     assert card.overall_bar.value() == 0
+    assert card.track_bar.objectName() == "track-bar"
+    assert card.overall_bar.objectName() == "overall-bar"
+    assert "#00E676" in DARK_THEME_QSS
 
 
 def test_settings_dialog_save(qapp, tmp_path):

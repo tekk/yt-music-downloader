@@ -318,8 +318,8 @@ QProgressBar {
     color: #FFFFFF;
 }
 
-QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FF0033, stop:1 #FF5252);
+QProgressBar::chunk, QProgressBar#track-bar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00C853, stop:1 #00E676);
     border-radius: 6px;
 }
 

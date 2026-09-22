@@ -289,12 +289,24 @@ class AuthDialog(QDialog):
         try:
             status = extract_from_installed_browser(browser, self.config.cookies_path)
             if status.is_authenticated:
-                self.lbl_sync_feedback.setText(f"✓ Successfully synced {status.count} cookies from {browser}!")
+                msg = f"✓ Successfully synced {status.count} YouTube cookies from {browser}!"
+                if status.discarded > 0:
+                    msg += f"\n(Filtered out {status.discarded} unrelated browser cookies)"
+                self.lbl_sync_feedback.setText(msg)
                 self.lbl_sync_feedback.setStyleSheet("color: #00E676; font-weight: bold;")
                 self.refresh_status()
-            else:
-                self.lbl_sync_feedback.setText(f"Found cookies from {browser}, but no active login tokens.")
+            elif status.exists and status.count > 0:
+                msg = f"Found {status.count} YouTube cookies from {browser}, but no active login tokens."
+                if status.discarded > 0:
+                    msg += f"\n(Filtered out {status.discarded} unrelated browser cookies)"
+                self.lbl_sync_feedback.setText(msg)
                 self.lbl_sync_feedback.setStyleSheet("color: #FFB300;")
+            else:
+                msg = f"No YouTube cookies found in {browser}."
+                if status.discarded > 0:
+                    msg += f"\n({status.discarded} unrelated browser cookies skipped)"
+                self.lbl_sync_feedback.setText(msg)
+                self.lbl_sync_feedback.setStyleSheet("color: #FF5252;")
         except Exception as e:
             self.lbl_sync_feedback.setText(f"Sync error: {e}")
             self.lbl_sync_feedback.setStyleSheet("color: #FF5252;")

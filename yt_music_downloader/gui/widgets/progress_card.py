@@ -72,6 +72,7 @@ class ProgressCardWidget(QFrame):
         layout.addLayout(track_row)
 
         self.track_bar = QProgressBar()
+        self.track_bar.setObjectName("track-bar")
         self.track_bar.setRange(0, 100)
         self.track_bar.setValue(0)
         self.track_bar.setTextVisible(True)

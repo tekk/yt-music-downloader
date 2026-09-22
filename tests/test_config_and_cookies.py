@@ -33,19 +33,50 @@ def test_config_defaults_and_save_load(tmp_path):
 def test_is_yt_cookie():
     from yt_music_downloader.browser_auth import is_yt_cookie
 
-    # Allowed YouTube domains
+    # Allowed YouTube domains & necessary cookies
     assert is_yt_cookie(".youtube.com", "LOGIN_INFO")
     assert is_yt_cookie("youtube.com", "SID")
     assert is_yt_cookie(".music.youtube.com", "PREF")
     assert is_yt_cookie("www.youtube.com", "YSC")
     assert is_yt_cookie(".youtubekids.com", "GPS")
+    assert is_yt_cookie(".youtube.com", "VISITOR_INFO1_LIVE")
+    assert is_yt_cookie(".youtube.com", "VISITOR_PRIVACY_METADATA")
+    assert is_yt_cookie(".youtube.com", "__Secure-YEC")
+    assert is_yt_cookie(".youtube.com", "__Secure-YENID")
+    assert is_yt_cookie(".youtube.com", "__Secure-ROLLOUT_TOKEN")
+    assert is_yt_cookie(".youtube.com", "__Secure-1PSIDTS")
+    assert is_yt_cookie(".youtube.com", "__Secure-3PSIDTS")
+    assert is_yt_cookie(".youtube.com", "SOCS")
+    assert is_yt_cookie(".youtube.com", "CONSENT")
 
-    # Allowed Google auth domains and cookies
+    # Disallowed non-essential cookies on YouTube domains (analytics, ads, search tracking)
+    assert not is_yt_cookie(".youtube.com", "_ga")
+    assert not is_yt_cookie(".youtube.com", "_gid")
+    assert not is_yt_cookie(".youtube.com", "_gat")
+    assert not is_yt_cookie(".youtube.com", "_gcl_au")
+    assert not is_yt_cookie(".youtube.com", "IDE")
+    assert not is_yt_cookie(".youtube.com", "1P_JAR")
+    assert not is_yt_cookie(".youtube.com", "NID")
+    assert not is_yt_cookie(".youtube.com", "AEC")
+    assert not is_yt_cookie(".youtube.com", "FCCDCF")
+    assert not is_yt_cookie("music.youtube.com", "random_tracker")
+
+    # Allowed Google auth domains and necessary identity cookies
     assert is_yt_cookie(".google.com", "SAPISID")
     assert is_yt_cookie(".google.com", "__Secure-1PSID")
     assert is_yt_cookie("google.com", "__Secure-3PAPISID")
+    assert is_yt_cookie(".google.com", "__Secure-1PSIDTS")
+    assert is_yt_cookie(".google.com", "__Secure-3PSIDTS")
     assert is_yt_cookie("accounts.google.com", "ACCOUNT_CHOOSER")
     assert is_yt_cookie("accounts.google.com", "LSID")
+
+    # Disallowed non-YouTube Google services cookies on google.com
+    assert not is_yt_cookie(".google.com", "__Secure-OSID")
+    assert not is_yt_cookie(".google.com", "__Secure-ENID")
+    assert not is_yt_cookie(".google.com", "__Secure-PAY-TOKEN")
+    assert not is_yt_cookie(".google.com", "__Secure-WALLET-AUTH")
+    assert not is_yt_cookie(".google.com", "COMPASS")
+    assert not is_yt_cookie(".google.com", "DRIVE_STREAM_VERSION")
 
     # Disallowed non-YouTube Google subdomains
     assert not is_yt_cookie("mail.google.com", "GMAIL_AT")
@@ -125,7 +156,12 @@ def test_import_and_filter_cookie_file(tmp_path):
         "# Netscape HTTP Cookie File\n"
         ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tsample_sid\n"
         ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tLOGIN_INFO\tsample_login\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t2147483647\t_ga\tyoutube_ga_tracker\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tIDE\tdoubleclick_ad\n"
         ".google.com\tTRUE\t/\tTRUE\t2147483647\t__Secure-3PSID\tsecure_sid\n"
+        ".google.com\tTRUE\t/\tTRUE\t2147483647\t__Secure-OSID\tdocs_drive_session\n"
+        ".google.com\tTRUE\t/\tTRUE\t2147483647\t__Secure-PAY-AUTH\tgoogle_pay\n"
+        ".google.com\tTRUE\t/\tTRUE\t2147483647\tNID\tgoogle_search_nid\n"
         ".google.com\tTRUE\t/\tTRUE\t2147483647\t_ga\tunneeded_ga\n"
         ".bank.com\tTRUE\t/\tTRUE\t2147483647\tbanking_auth\tprivate_session\n"
     )
@@ -135,7 +171,8 @@ def test_import_and_filter_cookie_file(tmp_path):
     assert status.exists
     assert status.is_authenticated
     assert status.count == 3
-    assert discarded == 2
+    assert discarded == 7
+    assert status.discarded == 7
 
     # Verify destination file content contains ONLY the 3 YT-relevant cookies
     dst_lines = [l for l in dst_file.read_text(encoding="utf-8").splitlines() if l and not l.startswith("#")]
@@ -144,6 +181,10 @@ def test_import_and_filter_cookie_file(tmp_path):
     names = [l.split("\t")[5] for l in dst_lines]
     assert ".bank.com" not in domains
     assert "_ga" not in names
+    assert "IDE" not in names
+    assert "__Secure-OSID" not in names
+    assert "__Secure-PAY-AUTH" not in names
+    assert "NID" not in names
     assert "SID" in names
     assert "LOGIN_INFO" in names
     assert "__Secure-3PSID" in names
@@ -208,10 +249,19 @@ def test_extract_from_installed_browser_filtering(tmp_path, monkeypatch):
     from yt_music_downloader.browser_auth import extract_from_installed_browser
 
     mock_jar = yt_dlp.cookies.YoutubeDLCookieJar()
+    # Necessary YouTube cookies
     c1 = Cookie(0, "LOGIN_INFO", "token", None, False, ".youtube.com", True, False, "/", True, False, 2000000000, False, None, None, {})
-    c2 = Cookie(0, "personal_session", "secret", None, False, ".otherbank.com", True, False, "/", True, False, 2000000000, False, None, None, {})
-    mock_jar.set_cookie(c1)
-    mock_jar.set_cookie(c2)
+    c2 = Cookie(0, "PREF", "f6=400", None, False, ".music.youtube.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+    c3 = Cookie(0, "SAPISID", "sapisid_secret", None, False, ".google.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+    # Unrelated browser / tracking cookies
+    c4 = Cookie(0, "personal_session", "secret", None, False, ".otherbank.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+    c5 = Cookie(0, "_ga", "analytics", None, False, ".youtube.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+    c6 = Cookie(0, "IDE", "doubleclick", None, False, ".youtube.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+    c7 = Cookie(0, "__Secure-OSID", "docs_session", None, False, ".google.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+    c8 = Cookie(0, "NID", "search_pref", None, False, ".google.com", True, False, "/", True, False, 2000000000, False, None, None, {})
+
+    for c in (c1, c2, c3, c4, c5, c6, c7, c8):
+        mock_jar.set_cookie(c)
 
     monkeypatch.setattr(yt_dlp.cookies, "extract_cookies_from_browser", lambda b: mock_jar)
 
@@ -220,12 +270,20 @@ def test_extract_from_installed_browser_filtering(tmp_path, monkeypatch):
 
     assert status.exists
     assert status.is_authenticated
-    assert status.count == 1
+    assert status.count == 3
+    assert status.discarded == 5
     assert "LOGIN_INFO" in status.auth_cookies
+    assert "SAPISID" in status.auth_cookies
 
     content = out_file.read_text(encoding="utf-8")
     assert ".otherbank.com" not in content
-    assert ".youtube.com" in content
+    assert "_ga" not in content
+    assert "IDE" not in content
+    assert "__Secure-OSID" not in content
+    assert "NID" not in content
+    assert "LOGIN_INFO" in content
+    assert "PREF" in content
+    assert "SAPISID" in content
 
 
 def test_has_cookies_status(tmp_path):
@@ -267,4 +325,55 @@ def test_get_browser_profile_dir():
     p = get_browser_profile_dir()
     assert p.is_dir()
     assert "browser_profile" in str(p)
+
+
+def test_check_cookie_file_counts_only_valid_yt_cookies(tmp_path):
+    cookie_file = tmp_path / "mixed_cookies.txt"
+    content = (
+        "# Netscape HTTP Cookie File\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tLOGIN_INFO\tsample_login\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t2147483647\tPREF\tf6=400\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t2147483647\t_ga\tunneeded_ga\n"
+        ".google.com\tTRUE\t/\tTRUE\t2147483647\t__Secure-OSID\tunneeded_osid\n"
+        ".bank.com\tTRUE\t/\tTRUE\t2147483647\tbanking_auth\tprivate_session\n"
+    )
+    cookie_file.write_text(content, encoding="utf-8")
+
+    # When sanitize=False, count should only count the 2 valid YouTube cookies
+    status_raw = check_cookie_file(cookie_file, sanitize=False)
+    assert status_raw.exists
+    assert status_raw.count == 2
+    assert status_raw.is_authenticated
+    assert status_raw.auth_cookies == ["LOGIN_INFO"]
+
+    # When sanitize=True, file is cleaned in place and discarded count is reported
+    status_clean = check_cookie_file(cookie_file, sanitize=True)
+    assert status_clean.exists
+    assert status_clean.count == 2
+    assert status_clean.discarded == 3
+    remaining_lines = [l for l in cookie_file.read_text(encoding="utf-8").splitlines() if l and not l.startswith("#")]
+    assert len(remaining_lines) == 2
+
+
+def test_import_only_unrelated_cookies(tmp_path):
+    from yt_music_downloader.browser_auth import import_and_filter_cookie_file
+
+    src_file = tmp_path / "other_cookies.txt"
+    dst_file = tmp_path / "clean.txt"
+    content = (
+        "# Netscape HTTP Cookie File\n"
+        ".facebook.com\tTRUE\t/\tTRUE\t2147483647\tc_user\t12345\n"
+        ".google.com\tTRUE\t/\tTRUE\t2147483647\tNID\tgoogle_search\n"
+        ".amazon.com\tTRUE\t/\tTRUE\t2147483647\tsession-id\t98765\n"
+    )
+    src_file.write_text(content, encoding="utf-8")
+
+    status, discarded = import_and_filter_cookie_file(src_file, dst_file)
+    assert not status.exists
+    assert status.count == 0
+    assert not status.is_authenticated
+    assert discarded == 3
+    assert status.discarded == 3
+    assert not dst_file.exists()
+
 

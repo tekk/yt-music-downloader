@@ -420,19 +420,20 @@ class AuthModal(ModalScreen[Optional[AppConfig]]):
                 self.config.cookies_path,
             )
             if status.is_authenticated:
-                feedback.update(
-                    Text.from_markup(
-                        f"[bold green]✓ Successfully synced {status.count} cookies from {browser}![/bold green]"
-                    )
-                )
-            elif status.exists:
-                feedback.update(
-                    Text.from_markup(
-                        f"[yellow]Synced {status.count} cookies, but no active YouTube login found in {browser}.[/yellow]"
-                    )
-                )
+                msg = f"[bold green]✓ Successfully synced {status.count} YouTube cookies from {browser}![/bold green]"
+                if status.discarded > 0:
+                    msg += f" [dim](Filtered out {status.discarded} unrelated browser cookies)[/dim]"
+                feedback.update(Text.from_markup(msg))
+            elif status.exists and status.count > 0:
+                msg = f"[yellow]Synced {status.count} YouTube cookies, but no active YouTube login found in {browser}.[/yellow]"
+                if status.discarded > 0:
+                    msg += f" [dim](Filtered out {status.discarded} unrelated browser cookies)[/dim]"
+                feedback.update(Text.from_markup(msg))
             else:
-                feedback.update(Text.from_markup(f"[red]No cookies found in {browser}.[/red]"))
+                msg = f"[red]No YouTube cookies found in {browser}.[/red]"
+                if status.discarded > 0:
+                    msg += f" [dim]({status.discarded} unrelated browser cookies skipped)[/dim]"
+                feedback.update(Text.from_markup(msg))
 
             self.config.save()
             self.refresh_status()

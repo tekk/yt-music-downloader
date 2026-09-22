@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -28,12 +29,13 @@ AUTH_COOKIE_NAMES = {
     "LOGIN_INFO",
     "SAPISID",
     "SID",
+    "SSID",
+    "HSID",
+    "APISID",
     "__Secure-1PSID",
     "__Secure-3PSID",
     "__Secure-1PAPISID",
     "__Secure-3PAPISID",
-    "SSID",
-    "APISID",
 }
 
 # Allowed YouTube domain suffixes
@@ -51,21 +53,17 @@ GOOGLE_AUTH_DOMAINS = {
     "myaccount.google.com",
 }
 
-# Necessary Google auth/session cookies for YouTube Innertube / Identity
-GOOGLE_AUTH_COOKIE_NAMES = {
+# Specific Google identity cookies that YouTube/Google OAuth relies on
+GOOGLE_IDENTITY_COOKIE_NAMES = {
     "LOGIN_INFO",
     "SAPISID",
-    "SID",
+    "APISID",
     "SSID",
     "HSID",
-    "APISID",
+    "SID",
     "SIDCC",
-    "PREF",
     "SOCS",
-    "YSC",
-    "GPS",
-    "VISITOR_INFO1_LIVE",
-    "VISITOR_PRIVACY_METADATA",
+    "CONSENT",
     "ACCOUNT_CHOOSER",
     "LSID",
     "__Host-1PLSID",
@@ -73,9 +71,32 @@ GOOGLE_AUTH_COOKIE_NAMES = {
     "__Host-GAPS",
 }
 
-GOOGLE_AUTH_PREFIXES = (
-    "__Secure-",
-)
+# YouTube-specific cookies necessary for video/music playback, preferences, visitor state, and session
+YOUTUBE_SPECIFIC_COOKIE_NAMES = {
+    "VISITOR_INFO1_LIVE",
+    "VISITOR_PRIVACY_METADATA",
+    "YSC",
+    "PREF",
+    "GPS",
+    "__Secure-ROLLOUT_TOKEN",
+    "__Secure-YEC",
+    "__Secure-YENID",
+    "DEVICE_INFO",
+    "wide",
+}
+
+# Complete set of necessary cookies for YouTube / YouTube Music
+NECESSARY_YT_COOKIE_NAMES = GOOGLE_IDENTITY_COOKIE_NAMES | YOUTUBE_SPECIFIC_COOKIE_NAMES
+
+# Secure partitioned auth cookie pattern for Google/YouTube session cookies:
+# e.g., __Secure-1PSID, __Secure-3PSID, __Secure-1PAPISID, __Secure-3PAPISID,
+#       __Secure-1PSIDTS, __Secure-3PSIDTS, __Secure-1PSIDCC, __Secure-3PSIDCC
+_SECURE_PARTITIONED_AUTH_RE = re.compile(r"^__Secure-[0-9]P(?:APISID|SID|SIDTS|SIDCC)$")
+
+
+def _is_allowed_auth_cookie(name: str) -> bool:
+    """Check if cookie name is an allowed Google/YouTube identity/session token."""
+    return name in GOOGLE_IDENTITY_COOKIE_NAMES or bool(_SECURE_PARTITIONED_AUTH_RE.match(name))
 
 
 def is_yt_cookie(domain: str, name: str) -> bool:
@@ -84,15 +105,14 @@ def is_yt_cookie(domain: str, name: str) -> bool:
         return False
     d = domain.lstrip(".").lower()
 
-    # 1. YouTube domains: include all cookies set specifically for YouTube
+    # 1. YouTube domains: only keep cookies necessary for YouTube / YouTube Music
     for yt_d in YT_DOMAINS:
         if d == yt_d or d.endswith("." + yt_d):
-            return True
+            return name in NECESSARY_YT_COOKIE_NAMES or bool(_SECURE_PARTITIONED_AUTH_RE.match(name))
 
     # 2. Google Identity domains: include only necessary authentication tokens
     if d in GOOGLE_AUTH_DOMAINS:
-        if name in GOOGLE_AUTH_COOKIE_NAMES or name.startswith(GOOGLE_AUTH_PREFIXES):
-            return True
+        return _is_allowed_auth_cookie(name)
 
     return False
 
@@ -105,6 +125,7 @@ class CookieStatus:
     is_authenticated: bool = False
     auth_cookies: list[str] = None
     file_path: str = ""
+    discarded: int = 0
 
     def __post_init__(self):
         if self.auth_cookies is None:
@@ -306,7 +327,7 @@ def import_and_filter_cookie_file(
     # Check how many data cookies were kept
     data_lines = [l for l in filtered_lines if l and not l.startswith("#")]
     if not data_lines:
-        return CookieStatus(exists=False, file_path=str(dst)), discarded
+        return CookieStatus(exists=False, file_path=str(dst), discarded=discarded), discarded
 
     # Write to target destination atomically
     tmp_target = dst.with_suffix(".tmp")
@@ -315,6 +336,7 @@ def import_and_filter_cookie_file(
     tmp_target.replace(dst)
 
     status = check_cookie_file(dst, sanitize=False)
+    status.discarded = discarded
     return status, discarded
 
 
@@ -324,8 +346,9 @@ def check_cookie_file(cookie_path: str | Path, sanitize: bool = True) -> CookieS
     if not path.is_file() or path.stat().st_size == 0:
         return CookieStatus(exists=False, file_path=str(path))
 
+    discarded = 0
     if sanitize:
-        sanitize_cookie_file(path)
+        _, discarded = sanitize_cookie_file(path)
 
     count = 0
     has_youtube = False
@@ -339,9 +362,9 @@ def check_cookie_file(cookie_path: str | Path, sanitize: bool = True) -> CookieS
                     continue
                 parts = line.split("\t")
                 if len(parts) >= 7:
-                    count += 1
                     domain, _, _, _, _, name, _ = parts[:7]
                     if is_yt_cookie(domain, name):
+                        count += 1
                         has_youtube = True
                         if name in AUTH_COOKIE_NAMES and name not in found_auth:
                             found_auth.append(name)
@@ -355,6 +378,7 @@ def check_cookie_file(cookie_path: str | Path, sanitize: bool = True) -> CookieS
         is_authenticated=len(found_auth) > 0,
         auth_cookies=found_auth,
         file_path=str(path),
+        discarded=discarded,
     )
 
 
@@ -367,12 +391,17 @@ def extract_from_installed_browser(browser_name: str, output_path: str | Path) -
     
     # Filter jar so only YouTube and essential Google auth cookies are saved
     filtered_jar = yt_dlp.cookies.YoutubeDLCookieJar(str(output_path))
+    discarded = 0
     for cookie in jar:
         if is_yt_cookie(cookie.domain, cookie.name):
             filtered_jar.set_cookie(cookie)
+        else:
+            discarded += 1
 
     filtered_jar.save(ignore_discard=True, ignore_expires=True)
-    return check_cookie_file(output_path, sanitize=False)
+    status = check_cookie_file(output_path, sanitize=True)
+    status.discarded = discarded + status.discarded
+    return status
 
 
 class BrowserLoginSession:
